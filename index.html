@@ -213,8 +213,15 @@ h1,h2,h3,h4{font-family:var(--serif);margin:0;line-height:1.25}
 .wave{animation:waves 9s linear infinite}
 .wave.w2{animation-duration:14s;animation-direction:reverse;opacity:.5}
 @keyframes waves{from{transform:translateX(0)}to{transform:translateX(-240px)}}
+.raft-sail{animation:sail 46s ease-in-out infinite alternate}
+@keyframes sail{from{transform:translateX(-230px)}to{transform:translateX(430px)}}
 .raft{animation:bob 4.5s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 50%}
 @keyframes bob{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-5px) rotate(1deg)}}
+.pole{animation:row 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:15% 0}
+@keyframes row{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
+.wake{animation:wake 3s ease-out infinite;transform-box:fill-box;transform-origin:100% 50%;opacity:0}
+.wake.k2{animation-delay:1.5s}
+@keyframes wake{0%{transform:scaleX(.3);opacity:0}30%{opacity:.6}100%{transform:scaleX(1.4) translateX(-30px);opacity:0}}
 .bird{animation:fly 26s linear infinite;opacity:.8}
 .bird.b2{animation-delay:-9s}
 @keyframes fly{from{transform:translateX(-120px) translateY(0)}50%{transform:translateX(700px) translateY(-25px)}to{transform:translateX(1560px) translateY(0)}}
@@ -226,7 +233,7 @@ h1,h2,h3,h4{font-family:var(--serif);margin:0;line-height:1.25}
 .walker .leg.b{animation-delay:-.3s}
 @keyframes step{from{transform:rotate(-18deg)}to{transform:rotate(18deg)}}
 @media (prefers-reduced-motion:reduce){
-  .cloud,.lantern,.smoke,.rice,.wave,.raft,.bird,.sun-glow,.walker,.walker .leg,.stamp,.marquee-track,.pulse,.steam,.route-walker{animation:none!important}
+  .cloud,.lantern,.smoke,.rice,.wave,.raft,.raft-sail,.pole,.wake,.bird,.sun-glow,.walker,.walker .leg,.stamp,.marquee-track,.pulse,.steam,.route-walker{animation:none!important}
 }
 
 /* ---------- 跑馬燈 ---------- */
@@ -799,10 +806,15 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
       </g>
 
       <!-- 竹筏 (包船巡河) -->
+      <g class="raft-sail">
       <g class="raft">
         <g transform="translate(600,352)">
-          <!-- 倒影 -->
+          <!-- 倒影與船尾水痕 -->
           <ellipse cx="70" cy="34" rx="70" ry="6" fill="#1f3a3d" opacity=".18"/>
+          <g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+            <path class="wake k1" d="M-4 18 q-14 -3 -28 0"/>
+            <path class="wake k2" d="M-2 24 q-16 4 -32 0"/>
+          </g>
           <!-- 遮陽棚 -->
           <rect x="30" y="-40" width="3" height="34" fill="#5a3b26"/><rect x="110" y="-40" width="3" height="34" fill="#5a3b26"/>
           <path d="M22 -40 h100 l-6 -10 h-88z" fill="#3e7c59"/>
@@ -815,12 +827,13 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
           </g>
           <!-- 船夫與竹篙 -->
           <circle cx="132" cy="-20" r="6" fill="#274a4d"/><rect x="126" y="-14" width="12" height="20" rx="3" fill="#5a3b26"/>
-          <path d="M136 -30 L 150 20" stroke="#8a5a2a" stroke-width="3" stroke-linecap="round"/>
+          <path class="pole" d="M136 -30 L 150 20" stroke="#8a5a2a" stroke-width="3" stroke-linecap="round"/>
           <!-- 筏身 -->
           <rect x="0" y="4" width="150" height="7" rx="3" fill="#a0783e"/>
           <rect x="0" y="9" width="150" height="6" rx="3" fill="#7a5a2a"/>
           <g stroke="#5a3b26" stroke-width="1"><line x1="20" y1="4" x2="20" y2="15"/><line x1="50" y1="4" x2="50" y2="15"/><line x1="80" y1="4" x2="80" y2="15"/><line x1="110" y1="4" x2="110" y2="15"/><line x1="140" y1="4" x2="140" y2="15"/></g>
         </g>
+      </g>
       </g>
     </svg>
   </div>
