@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>報名現況儀表板｜360°醫學人生｜走進臺南，走進生活</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='8' y='34' width='10' height='22' rx='2' fill='%233a8a5c'/%3E%3Crect x='22' y='20' width='10' height='36' rx='2' fill='%23d24a2e'/%3E%3Crect x='36' y='28' width='10' height='28' rx='2' fill='%232f6db5'/%3E%3Crect x='50' y='12' width='10' height='44' rx='2' fill='%23c9880c'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:light;
+  --brick:#b4432f;--brick-deep:#8a2f22;--gold:#d9a441;--gold-soft:#f1dfae;
+  --rice:#f7efdd;--cream:#fbf7ee;--paper:#fffdf8;--line:#e6dcc8;
+  --ink:#2b2a28;--ink-soft:#5f5a53;--ink-muted:#8a847a;
+  --green:#3e7c59;
+  /* 圖表色（依身分固定順序，已通過色盲/對比驗證） */
+  --s-ugy:#3a8a5c;--s-pgy:#d24a2e;--s-mpgy:#2f6db5;--s-teacher:#c9880c;
+  --ok:#2f7a4a;--warn:#b7791f;--full:#b3261e;
+  --shadow:0 8px 24px rgba(74,43,26,.10);
+  --serif:"Noto Serif TC","PingFang TC","Microsoft JhengHei",serif;
+  --sans:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--cream);line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--serif);margin:0;line-height:1.25}
+a{color:inherit}
+.container{width:min(1200px,94%);margin:0 auto}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* 頁首 */
+.top{position:sticky;top:0;z-index:20;background:rgba(251,247,238,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top .container{display:flex;align-items:center;justify-content:space-between;gap:1rem;min-height:64px;flex-wrap:wrap;padding:.5rem 0}
+.brand{display:flex;align-items:center;gap:.7rem;text-decoration:none}
+.brand-mark{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--brick),#e4572e);display:grid;place-items:center;color:#fff;font-family:var(--serif);font-weight:900;font-size:.8rem}
+.brand-text{display:flex;flex-direction:column;line-height:1.2}
+.brand-text small{font-size:.72rem;color:var(--ink-soft);letter-spacing:.08em}
+.brand-text strong{font-family:var(--serif);font-size:1.05rem;color:var(--brick-deep)}
+.top-actions{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.status{display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--ink-soft)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--green);animation:pulse 1.6s ease-in-out infinite}
+.dot.off{background:var(--gold);animation:none}
+.dot.err{background:var(--full);animation:none}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(62,124,89,.5)}70%{box-shadow:0 0 0 7px rgba(62,124,89,0)}}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;border-radius:999px;border:2px solid var(--brick);background:#fff;color:var(--brick);font:inherit;font-weight:700;font-size:.9rem;cursor:pointer;text-decoration:none;white-space:nowrap;transition:all .2s}
+.btn:hover{background:var(--brick);color:#fff}
+.btn.solid{background:var(--brick);color:#fff}
+.btn.solid:hover{background:var(--brick-deep);border-color:var(--brick-deep)}
+.btn svg{width:1em;height:1em}
+.btn[disabled]{opacity:.6;cursor:not-allowed}
+
+/* 區塊 */
+main{padding:1.8rem 0 3rem}
+.section{margin-bottom:1.8rem}
+.section-title{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.8rem}
+.section-title h2{font-size:1.25rem;color:#1f3a3d}
+.section-title h2::before{content:"";display:inline-block;width:6px;height:1em;background:var(--brick);border-radius:3px;margin-right:.55rem;vertical-align:-.15em}
+.section-title .sub{font-size:.85rem;color:var(--ink-soft)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:1.2rem 1.3rem}
+
+/* 提示列 */
+.notice{border-radius:14px;padding:.9rem 1.1rem;font-size:.9rem;margin-bottom:1.2rem;display:none;gap:.8rem;align-items:flex-start}
+.notice.show{display:flex}
+.notice.warn{background:#fff6e0;border:1px solid #f0d58a;color:#6b4d0a}
+.notice.error{background:#fdecea;border:1px solid #f1b8ae;color:#8f2416}
+.notice.info{background:#e8f1ea;border:1px solid #bcd8c6;color:#1f4a31}
+.notice svg{width:20px;height:20px;flex:none;margin-top:.1rem}
+.notice code{background:rgba(0,0,0,.06);padding:.05rem .35rem;border-radius:4px}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:1rem 1.2rem;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--k,var(--brick))}
+.kpi .label{font-size:.82rem;color:var(--ink-soft);letter-spacing:.04em}
+.kpi .value{font-family:var(--serif);font-size:2.2rem;font-weight:900;color:#1f3a3d;line-height:1.1;margin:.2rem 0 .1rem}
+.kpi .value small{font-size:1rem;color:var(--ink-muted);font-family:var(--sans);font-weight:500;margin-left:.2rem}
+.kpi .foot{font-size:.8rem;color:var(--ink-muted)}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:460px){.kpis{grid-template-columns:1fr}}
+
+/* 梯次卡 */
+.sessions{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.session-card{background:var(--paper);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:1.1rem 1.2rem 1rem;position:relative}
+.session-card h3{font-size:1.1rem;color:#1f3a3d;display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap}
+.session-card h3 small{font-family:var(--sans);font-weight:500;font-size:.8rem;color:var(--ink-soft)}
+.session-total{display:flex;align-items:baseline;gap:.4rem;margin:.3rem 0 .6rem}
+.session-total b{font-family:var(--serif);font-size:1.9rem;color:#1f3a3d}
+.session-total span{font-size:.85rem;color:var(--ink-muted)}
+.badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.75rem;font-weight:700;padding:.1rem .55rem;border-radius:999px;border:1px solid currentColor}
+.badge.ok{color:var(--ok)}.badge.warn{color:var(--warn)}.badge.full{color:var(--full)}
+.badge svg{width:.9em;height:.9em}
+.rows{display:grid;gap:.55rem}
+.row{display:grid;grid-template-columns:96px 1fr 62px;align-items:center;gap:.6rem;font-size:.85rem}
+.row .name{display:flex;align-items:center;gap:.4rem;color:var(--ink);white-space:nowrap}
+.swatch{width:10px;height:10px;border-radius:3px;flex:none;background:var(--c)}
+.track{height:10px;background:var(--rice);border:1px solid var(--line);border-radius:999px;overflow:hidden;position:relative}
+.track i{position:absolute;left:0;top:0;bottom:0;background:var(--c);border-radius:0 4px 4px 0;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.track.full i{border-radius:999px}
+.row .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-soft)}
+.row .num b{color:var(--ink)}
+.meals{display:flex;gap:.8rem;margin-top:.8rem;padding-top:.7rem;border-top:1px dashed var(--line);font-size:.82rem;color:var(--ink-soft)}
+.meals b{color:var(--ink)}
+@media (max-width:900px){.sessions{grid-template-columns:1fr}}
+
+/* 兩欄 */
+.two{display:grid;grid-template-columns:1.2fr .8fr;gap:1rem}
+.two>.card,.section>.card{min-width:0}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+
+/* 圖表 */
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-family:var(--sans)}
+.legend{display:flex;flex-wrap:wrap;gap:.4rem 1rem;font-size:.82rem;color:var(--ink-soft);margin-bottom:.6rem}
+.legend span{display:inline-flex;align-items:center;gap:.4rem}
+.tooltip{position:fixed;z-index:50;pointer-events:none;background:#2b2a28;color:#fff;font-size:.8rem;line-height:1.5;padding:.45rem .7rem;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.25);opacity:0;transition:opacity .12s;max-width:260px}
+.tooltip.show{opacity:1}
+.tooltip b{color:var(--gold-soft)}
+.empty{padding:1.6rem;text-align:center;color:var(--ink-muted);font-size:.9rem;border:1px dashed var(--line);border-radius:12px}
+
+/* 表格 */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.88rem;min-width:520px}
+th,td{padding:.55rem .7rem;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-size:.78rem;letter-spacing:.06em;color:var(--ink-soft);font-weight:700;background:var(--rice);position:sticky;top:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.total td{font-weight:700;background:#fffaf0}
+.cell{display:inline-flex;align-items:center;gap:.5rem;justify-content:flex-end;min-width:110px}
+.cell .mini{width:56px;height:6px;background:var(--rice);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.cell .mini i{display:block;height:100%;background:var(--c);border-radius:0 3px 3px 0}
+.cell.full{color:var(--full);font-weight:700}
+.chip{display:inline-flex;align-items:center;gap:.35rem;padding:.05rem .5rem;border-radius:999px;font-size:.78rem;background:var(--rice);border:1px solid var(--line)}
+.chip .swatch{width:8px;height:8px}
+
+/* 篩選 */
+.filters{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:.8rem}
+.filters select,.filters input{font:inherit;font-size:.9rem;padding:.45rem .7rem;border-radius:10px;border:1.5px solid var(--line);background:#fff;color:var(--ink)}
+.filters input{min-width:200px;flex:1}
+.filters select:focus,.filters input:focus{outline:none;border-color:var(--brick);box-shadow:0 0 0 3px rgba(180,67,47,.14)}
+.filters .count{font-size:.85rem;color:var(--ink-soft);margin-left:auto}
+
+/* 金鑰 */
+.lock{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
+.lock input{font:inherit;padding:.5rem .8rem;border-radius:10px;border:1.5px solid var(--line);min-width:220px}
+.lock input:focus{outline:none;border-color:var(--brick);box-shadow:0 0 0 3px rgba(180,67,47,.14)}
+.lock .hint{font-size:.82rem;color:var(--ink-soft);flex-basis:100%}
+
+.foot{margin-top:2rem;font-size:.8rem;color:var(--ink-muted);text-align:center}
+@media print{.top,.btn,.filters,.tooltip{display:none!important}body{background:#fff}.card,.kpi,.session-card{box-shadow:none}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="container">
+    <a class="brand" href="index.html" title="回報名網頁">
+      <div class="brand-mark">360°</div>
+      <div class="brand-text"><small>奇美醫院教學部</small><strong>報名現況儀表板</strong></div>
+    </a>
+    <div class="top-actions">
+      <span class="status"><span class="dot off" id="dot"></span><span id="statusText">載入中…</span></span>
+      <button class="btn" id="refreshBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        重新整理
+      </button>
+      <button class="btn" id="csvBtn" type="button" disabled title="需輸入金鑰後才可匯出名單">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+        匯出名單 CSV
+      </button>
+      <a class="btn solid" href="index.html">報名網頁</a>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+  <div class="notice" id="notice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg><div id="noticeText"></div></div>
+
+  <!-- KPI -->
+  <section class="section">
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <!-- 各梯次 -->
+  <section class="section">
+    <div class="section-title"><h2>各梯次報名進度</h2><span class="sub" id="scopeText"></span></div>
+    <div class="sessions" id="sessions"></div>
+  </section>
+
+  <!-- 圖表 + 矩陣 -->
+  <section class="section two">
+    <div class="card">
+      <div class="section-title"><h2>梯次 × 身分 報名人數</h2><span class="sub">堆疊長條，虛線為每梯次總名額</span></div>
+      <div class="legend" id="legend"></div>
+      <div class="chart" id="stackChart"></div>
+    </div>
+    <div class="card">
+      <div class="section-title"><h2>名額一覽表</h2><span class="sub">已報名／限額</span></div>
+      <div class="table-wrap"><table id="matrix"></table></div>
+    </div>
+  </section>
+
+  <!-- 需金鑰的區塊 -->
+  <section class="section" id="lockSection">
+    <div class="card">
+      <div class="section-title"><h2>報名名單與明細</h2><span class="sub">需輸入儀表板金鑰</span></div>
+      <div class="lock">
+        <input type="password" id="keyInput" placeholder="輸入儀表板金鑰" autocomplete="off">
+        <button class="btn solid" id="keyBtn" type="button">解鎖</button>
+        <span class="hint">金鑰設定於 Apps Script 的 <code>DASHBOARD_KEY</code>。解鎖後可查看每日報名趨勢、單位分佈、餐食統計與報名名單（不含身分證號、出生日期等敏感資料）。</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section two" id="detailCharts" hidden>
+    <div class="card">
+      <div class="section-title"><h2>每日報名人數</h2><span class="sub" id="dailySub"></span></div>
+      <div class="chart" id="dailyChart"></div>
+    </div>
+    <div class="card">
+      <div class="section-title"><h2>單位分佈</h2><span class="sub">前 10 名</span></div>
+      <div class="chart" id="unitChart"></div>
+    </div>
+  </section>
+
+  <section class="section" id="rosterSection" hidden>
+    <div class="card">
+      <div class="section-title"><h2>報名名單</h2><span class="sub">最新報名在最前</span></div>
+      <div class="filters">
+        <select id="fSession"><option value="">全部梯次</option></select>
+        <select id="fIdentity"><option value="">全部身分</option></select>
+        <select id="fMeal"><option value="">全部餐食</option><option>葷食</option><option>素食</option></select>
+        <input type="search" id="fSearch" placeholder="搜尋姓名、單位、人事號、職稱">
+        <span class="count" id="rosterCount"></span>
+      </div>
+      <div class="table-wrap"><table id="roster"></table></div>
+    </div>
+  </section>
+
+  <p class="foot">資料來源：Google 試算表「活動報名資料」總表・每 60 秒自動更新・<span id="footTs"></span></p>
+</main>
+
+<div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
+
+<script>
+/* ---------------- 設定 ---------------- */
+const CONFIG = {
+  API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
+  POLL_MS: 60000
+};
+const SESSIONS = [
+  { key: "第一梯次", date: "115/10/17（六）–10/18（日）", short: "10/17–10/18" },
+  { key: "第二梯次", date: "115/11/21（六）–11/22（日）", short: "11/21–11/22" },
+  { key: "第三梯次", date: "115/12/5（六）–12/6（日）",   short: "12/5–12/6" }
+];
+const IDENTITIES = [
+  { key: "西醫UGY",     limit: 8,  color: "var(--s-ugy)",     hex: "#3a8a5c" },
+  { key: "西醫PGY",     limit: 10, color: "var(--s-pgy)",     hex: "#d24a2e" },
+  { key: "醫事職類PGY", limit: 9,  color: "var(--s-mpgy)",    hex: "#2f6db5" },
+  { key: "臨床教師",    limit: 8,  color: "var(--s-teacher)", hex: "#c9880c" }
+];
+const KEY_STORE = "tainan360_dashboard_key";
+const PER_SESSION_LIMIT = IDENTITIES.reduce((n, i) => n + i.limit, 0);
+
+let state = { counts: null, limits: null, quotaScope: "session", registrations: null, ts: null, unlocked: false, online: false };
+let dashKey = "";
+try { dashKey = sessionStorage.getItem(KEY_STORE) || ""; } catch(e){}
+
+/* ---------------- 工具 ---------------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtTime = d => d.toLocaleString("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+const emptyCounts = () => Object.fromEntries(SESSIONS.map(s => [s.key, Object.fromEntries(IDENTITIES.map(i => [i.key, 0]))]));
+function used(session, identity){
+  if (!state.counts) return 0;
+  if (state.quotaScope === "total") return SESSIONS.reduce((n, s) => n + (state.counts[s.key]?.[identity] || 0), 0);
+  return state.counts[session]?.[identity] || 0;
+}
+function limitOf(identity){ return (state.limits && state.limits[identity]) || IDENTITIES.find(i => i.key === identity).limit; }
+function sessionTotal(session){ return IDENTITIES.reduce((n, i) => n + (state.counts?.[session]?.[i.key] || 0), 0); }
+
+function notice(type, html){
+  const n = $("#notice");
+  if (!type){ n.className = "notice"; return; }
+  n.className = "notice show " + type;
+  $("#noticeText").innerHTML = html;
+}
+function setStatus(kind, text){
+  const d = $("#dot"); d.className = "dot " + (kind === "ok" ? "" : kind);
+  $("#statusText").textContent = text;
+}
+
+/* ---------------- 資料讀取 ---------------- */
+async function load(){
+  $("#refreshBtn").disabled = true;
+  try {
+    let data;
+    if (dashKey){
+      const res = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "dashboard", key: dashKey }) });
+      data = await res.json();
+      if (data && data.ok && Array.isArray(data.registrations)){
+        state.unlocked = true;
+        notice(null);
+      } else {
+        state.unlocked = false;
+        if (data && data.error === "unauthorized"){
+          notice("error", "金鑰不正確，僅顯示名額統計。請重新輸入金鑰。");
+          try { sessionStorage.removeItem(KEY_STORE); } catch(e){}
+          dashKey = "";
+        } else {
+          notice("warn", "後端尚未支援名單查詢：請將最新的 <code>apps-script/Code.gs</code> 貼回 Apps Script，並以「新版本」重新部署後再試。目前僅顯示名額統計。");
+        }
+        data = await fetchCountsOnly();
+      }
+    } else {
+      data = await fetchCountsOnly();
+    }
+    if (!data || !data.ok) throw new Error("bad response");
+    state.counts = Object.assign(emptyCounts(), data.counts || {});
+    state.limits = data.limits || null;
+    state.quotaScope = data.quotaScope || "session";
+    state.registrations = state.unlocked ? data.registrations : null;
+    state.ts = new Date();
+    state.online = true;
+    setStatus("ok", "已連線・更新 " + state.ts.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }));
+  } catch(err){
+    console.error(err);
+    state.online = false;
+    setStatus("err", "無法連線試算表" + (state.ts ? "・顯示 " + fmtTime(state.ts) + " 的資料" : ""));
+    if (!state.counts) notice("error", "無法取得資料，請確認網路連線或 Apps Script 部署狀態。");
+  } finally {
+    $("#refreshBtn").disabled = false;
+    render();
+  }
+}
+async function fetchCountsOnly(){
+  const res = await fetch(CONFIG.API_URL + "?t=" + Date.now(), { cache: "no-store" });
+  return await res.json();
+}
+
+/* ---------------- 畫面 ---------------- */
+function render(){
+  if (!state.counts) return;
+  renderKpis();
+  renderSessions();
+  renderStack();
+  renderMatrix();
+  renderDetail();
+  $("#footTs").textContent = state.ts ? "最後更新 " + state.ts.toLocaleString("zh-TW") : "";
+  $("#scopeText").textContent = state.quotaScope === "total" ? "三梯次共用名額" : `每梯次名額 ${PER_SESSION_LIMIT} 人（UGY 8・PGY 10・醫事職類PGY 9・臨床教師 8）`;
+}
+
+function renderKpis(){
+  const totalLimit = state.quotaScope === "total" ? PER_SESSION_LIMIT : PER_SESSION_LIMIT * SESSIONS.length;
+  const total = SESSIONS.reduce((n, s) => n + sessionTotal(s.key), 0);
+  const fullCells = SESSIONS.flatMap(s => IDENTITIES.filter(i => used(s.key, i.key) >= limitOf(i.key)));
+  const pct = totalLimit ? Math.round(total / totalLimit * 100) : 0;
+  const busiest = [...SESSIONS].sort((a, b) => sessionTotal(b.key) - sessionTotal(a.key))[0];
+  let veg = null, vegPct = null;
+  if (state.registrations){
+    veg = state.registrations.filter(r => r.meal === "素食").length;
+    vegPct = state.registrations.length ? Math.round(veg / state.registrations.length * 100) : 0;
+  }
+  $("#kpis").innerHTML = `
+    <div class="kpi" style="--k:var(--brick)"><div class="label">總報名人數</div><div class="value">${total}<small>／ ${totalLimit} 名</small></div><div class="foot">整體額滿率 ${pct}%</div></div>
+    <div class="kpi" style="--k:var(--s-mpgy)"><div class="label">剩餘名額</div><div class="value">${Math.max(0, totalLimit - total)}<small>名</small></div><div class="foot">${SESSIONS.map(s => `${s.key.replace("梯次","")} ${Math.max(0, PER_SESSION_LIMIT - sessionTotal(s.key))}`).join("・")}</div></div>
+    <div class="kpi" style="--k:var(--s-teacher)"><div class="label">已額滿的梯次身分</div><div class="value">${fullCells.length}<small>／ ${SESSIONS.length * IDENTITIES.length} 組</small></div><div class="foot">報名最踴躍：${busiest.key}（${sessionTotal(busiest.key)} 人）</div></div>
+    <div class="kpi" style="--k:var(--s-ugy)"><div class="label">素食人數</div><div class="value">${veg === null ? "－" : veg}<small>${veg === null ? "" : "人"}</small></div><div class="foot">${veg === null ? "解鎖後顯示餐食統計" : `占 ${vegPct}%・葷食 ${state.registrations.length - veg} 人`}</div></div>`;
+}
+
+function renderSessions(){
+  $("#sessions").innerHTML = SESSIONS.map(s => {
+    const total = sessionTotal(s.key);
+    const left = Math.max(0, PER_SESSION_LIMIT - total);
+    const isFull = IDENTITIES.every(i => used(s.key, i.key) >= limitOf(i.key));
+    const badge = isFull ? `<span class="badge full">● 全部額滿</span>` : left <= 5 ? `<span class="badge warn">▲ 剩 ${left} 名</span>` : `<span class="badge ok">✓ 開放報名</span>`;
+    let meals = "";
+    if (state.registrations){
+      const rs = state.registrations.filter(r => r.session === s.key);
+      const veg = rs.filter(r => r.meal === "素食").length;
+      meals = `<div class="meals"><span>🍜 葷食 <b>${rs.length - veg}</b></span><span>🌿 素食 <b>${veg}</b></span></div>`;
+    }
+    return `
+      <div class="session-card">
+        <h3>${s.key} <small>${s.date}</small></h3>
+        <div class="session-total"><b>${total}</b><span>／ ${PER_SESSION_LIMIT} 人</span>${badge}</div>
+        <div class="rows">${IDENTITIES.map(i => {
+          const u = used(s.key, i.key), lim = limitOf(i.key), pct = Math.min(100, Math.round(u / lim * 100));
+          return `<div class="row" data-tip="${esc(s.key)}｜${esc(i.key)}：已報名 ${u} 人，剩餘 ${Math.max(0, lim - u)} 名（限額 ${lim}）">
+            <span class="name"><span class="swatch" style="--c:${i.color}"></span>${i.key}</span>
+            <span class="track ${u >= lim ? "full" : ""}" style="--c:${i.color}"><i style="width:${pct}%"></i></span>
+            <span class="num"><b>${u}</b>／${lim}${u >= lim ? " 滿" : ""}</span>
+          </div>`;
+        }).join("")}</div>
+        ${meals}
+      </div>`;
+  }).join("");
+}
+
+function renderStack(){
+  $("#legend").innerHTML = IDENTITIES.map(i => `<span><span class="swatch" style="--c:${i.color}"></span>${i.key}</span>`).join("");
+  const W = 640, H = 200, padL = 78, padR = 54, padT = 10, padB = 28;
+  const innerW = W - padL - padR, rowH = (H - padT - padB) / SESSIONS.length, barH = 22;
+  const maxV = PER_SESSION_LIMIT;
+  const x = v => padL + v / maxV * innerW;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="各梯次依身分堆疊的報名人數">`;
+  // 格線
+  for (let v = 0; v <= maxV; v += 5){
+    svg += `<line x1="${x(v)}" y1="${padT}" x2="${x(v)}" y2="${H - padB}" stroke="#e6dcc8" stroke-width="1"/><text x="${x(v)}" y="${H - padB + 16}" font-size="10" fill="#8a847a" text-anchor="middle">${v}</text>`;
+  }
+  svg += `<line x1="${x(maxV)}" y1="${padT}" x2="${x(maxV)}" y2="${H - padB}" stroke="#b4432f" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  SESSIONS.forEach((s, r) => {
+    const cy = padT + rowH * r + rowH / 2;
+    svg += `<text x="${padL - 10}" y="${cy + 4}" font-size="12" fill="#2b2a28" text-anchor="end" font-weight="500">${s.key}</text>`;
+    let acc = 0;
+    IDENTITIES.forEach((i, k) => {
+      const u = used(s.key, i.key);
+      if (!u) return;
+      const x0 = x(acc), x1 = x(acc + u), w = Math.max(0, x1 - x0 - 2);
+      const last = k === IDENTITIES.length - 1 || IDENTITIES.slice(k + 1).every(j => !used(s.key, j.key));
+      svg += `<rect class="mark" x="${x0}" y="${cy - barH / 2}" width="${w}" height="${barH}" fill="${i.hex}" rx="${last ? 4 : 0}" data-tip="${esc(s.key)}｜${esc(i.key)}：${u} 人（限額 ${limitOf(i.key)}）"/>`;
+      if (w > 18) svg += `<text x="${x0 + w / 2}" y="${cy + 4}" font-size="11" fill="#fff" text-anchor="middle" font-weight="700" pointer-events="none">${u}</text>`;
+      acc += u;
+    });
+    svg += `<text x="${x(acc) + 8}" y="${cy + 4}" font-size="12" fill="#5f5a53" font-weight="700">${acc}</text>`;
+  });
+  svg += `</svg>`;
+  $("#stackChart").innerHTML = svg;
+}
+
+function renderMatrix(){
+  const head = `<tr><th>身分</th>${SESSIONS.map(s => `<th class="num">${s.key}<br><small>${s.short}</small></th>`).join("")}<th class="num">合計</th></tr>`;
+  const body = IDENTITIES.map(i => {
+    const lim = limitOf(i.key);
+    let sum = 0;
+    const cells = SESSIONS.map(s => {
+      const u = used(s.key, i.key); sum += u;
+      const pct = Math.min(100, Math.round(u / lim * 100));
+      return `<td class="num"><span class="cell ${u >= lim ? "full" : ""}" style="--c:${i.color}"><span class="mini"><i style="width:${pct}%"></i></span>${u}／${lim}</span></td>`;
+    }).join("");
+    return `<tr><td><span class="chip"><span class="swatch" style="--c:${i.color}"></span>${i.key}</span></td>${cells}<td class="num">${sum}／${lim * SESSIONS.length}</td></tr>`;
+  }).join("");
+  const totalRow = `<tr class="total"><td>合計</td>${SESSIONS.map(s => `<td class="num">${sessionTotal(s.key)}／${PER_SESSION_LIMIT}</td>`).join("")}<td class="num">${SESSIONS.reduce((n, s) => n + sessionTotal(s.key), 0)}／${PER_SESSION_LIMIT * SESSIONS.length}</td></tr>`;
+  $("#matrix").innerHTML = head + body + totalRow;
+}
+
+/* ---------- 解鎖後的明細 ---------- */
+function renderDetail(){
+  const on = state.unlocked && Array.isArray(state.registrations);
+  $("#lockSection").hidden = on;
+  $("#detailCharts").hidden = !on;
+  $("#rosterSection").hidden = !on;
+  $("#csvBtn").disabled = !on;
+  if (!on) return;
+  renderDaily();
+  renderUnits();
+  fillFilters();
+  renderRoster();
+}
+
+function renderDaily(){
+  const regs = state.registrations;
+  if (!regs.length){ $("#dailyChart").innerHTML = `<div class="empty">尚無報名資料</div>`; $("#dailySub").textContent = ""; return; }
+  const byDay = {};
+  regs.forEach(r => { const d = new Date(r.ts); if (isNaN(d)) return; const k = d.toISOString().slice(0, 10); byDay[k] = (byDay[k] || 0) + 1; });
+  const days = Object.keys(byDay).sort();
+  const first = new Date(days[0]), lastD = new Date(days[days.length - 1]);
+  const series = [];
+  for (let d = new Date(first); d <= lastD; d.setDate(d.getDate() + 1)){ const k = d.toISOString().slice(0, 10); series.push({ k, v: byDay[k] || 0 }); }
+  const shown = series.slice(-30);
+  $("#dailySub").textContent = `${shown[0].k.replace(/-/g, "/")} – ${shown[shown.length - 1].k.replace(/-/g, "/")}`;
+  const W = 640, H = 200, padL = 30, padR = 10, padT = 12, padB = 30;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const maxV = Math.max(4, ...shown.map(d => d.v));
+  const step = innerW / shown.length, bw = Math.max(4, step - 2);
+  const y = v => padT + innerH - v / maxV * innerH;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="每日報名人數">`;
+  const ticks = maxV <= 8 ? 2 : Math.ceil(maxV / 4);
+  for (let v = 0; v <= maxV; v += ticks){ svg += `<line x1="${padL}" y1="${y(v)}" x2="${W - padR}" y2="${y(v)}" stroke="#e6dcc8"/><text x="${padL - 6}" y="${y(v) + 4}" font-size="10" fill="#8a847a" text-anchor="end">${v}</text>`; }
+  shown.forEach((d, i) => {
+    const x0 = padL + i * step + (step - bw) / 2;
+    const h = innerH * d.v / maxV;
+    svg += `<rect class="mark" x="${x0}" y="${y(d.v)}" width="${bw}" height="${Math.max(0, h)}" rx="3" fill="#b4432f" data-tip="${d.k.replace(/-/g, "/")}：${d.v} 人"/>`;
+    if (shown.length <= 14 || i % Math.ceil(shown.length / 7) === 0) svg += `<text x="${x0 + bw / 2}" y="${H - padB + 16}" font-size="10" fill="#8a847a" text-anchor="middle">${d.k.slice(5).replace("-", "/")}</text>`;
+    if (d.v && (shown.length <= 20 || d.v === maxV)) svg += `<text x="${x0 + bw / 2}" y="${y(d.v) - 4}" font-size="10" fill="#5f5a53" text-anchor="middle" font-weight="700" pointer-events="none">${d.v}</text>`;
+  });
+  svg += `</svg>`;
+  $("#dailyChart").innerHTML = svg;
+}
+
+function renderUnits(){
+  const regs = state.registrations;
+  if (!regs.length){ $("#unitChart").innerHTML = `<div class="empty">尚無報名資料</div>`; return; }
+  const m = {};
+  regs.forEach(r => { const u = r.unit || "（未填）"; m[u] = (m[u] || 0) + 1; });
+  const top = Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const maxV = top[0][1];
+  const rowH = 24, W = 640, padL = 140, padR = 40, H = top.length * rowH + 8;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="單位分佈前十名">`;
+  top.forEach(([u, v], i) => {
+    const cy = 4 + i * rowH + rowH / 2, w = Math.max(4, (W - padL - padR) * v / maxV);
+    svg += `<text x="${padL - 8}" y="${cy + 4}" font-size="12" fill="#2b2a28" text-anchor="end">${esc(u.length > 10 ? u.slice(0, 10) + "…" : u)}</text>
+      <rect class="mark" x="${padL}" y="${cy - 8}" width="${w}" height="16" rx="4" fill="#2f6db5" data-tip="${esc(u)}：${v} 人"/>
+      <text x="${padL + w + 6}" y="${cy + 4}" font-size="11" fill="#5f5a53" font-weight="700">${v}</text>`;
+  });
+  svg += `</svg>`;
+  $("#unitChart").innerHTML = svg;
+}
+
+function fillFilters(){
+  const fs = $("#fSession"), fi = $("#fIdentity");
+  if (fs.options.length === 1) SESSIONS.forEach(s => fs.add(new Option(s.key, s.key)));
+  if (fi.options.length === 1) IDENTITIES.forEach(i => fi.add(new Option(i.key, i.key)));
+}
+function filteredRoster(){
+  const s = $("#fSession").value, i = $("#fIdentity").value, m = $("#fMeal").value, q = $("#fSearch").value.trim().toLowerCase();
+  return [...state.registrations]
+    .sort((a, b) => new Date(b.ts) - new Date(a.ts))
+    .filter(r => (!s || r.session === s) && (!i || r.identity === i) && (!m || r.meal === m) &&
+      (!q || [r.name, r.unit, r.empId, r.title].some(v => String(v).toLowerCase().includes(q))));
+}
+function renderRoster(){
+  const rows = filteredRoster();
+  $("#rosterCount").textContent = `顯示 ${rows.length}／${state.registrations.length} 筆`;
+  if (!rows.length){ $("#roster").innerHTML = `<tr><td colspan="8"><div class="empty">沒有符合條件的報名資料</div></td></tr>`; return; }
+  $("#roster").innerHTML = `<tr><th>#</th><th>報名時間</th><th>梯次</th><th>身分</th><th>單位</th><th>姓名</th><th>人事號</th><th>職稱</th><th>餐食</th></tr>` +
+    rows.map((r, k) => {
+      const i = IDENTITIES.find(x => x.key === r.identity);
+      const d = new Date(r.ts);
+      return `<tr><td class="num">${k + 1}</td><td>${isNaN(d) ? esc(r.ts) : fmtTime(d)}</td><td>${esc(r.session)}</td><td><span class="chip"><span class="swatch" style="--c:${i ? i.color : "#999"}"></span>${esc(r.identity)}</span></td><td>${esc(r.unit)}</td><td>${esc(r.name)}</td><td>${esc(r.empId)}</td><td>${esc(r.title)}</td><td>${esc(r.meal)}</td></tr>`;
+    }).join("");
+}
+["fSession","fIdentity","fMeal"].forEach(id => $("#" + id).addEventListener("change", renderRoster));
+$("#fSearch").addEventListener("input", renderRoster);
+
+/* ---------- CSV 匯出（不含敏感欄位） ---------- */
+$("#csvBtn").addEventListener("click", () => {
+  if (!state.registrations) return;
+  const rows = filteredRoster();
+  const head = ["報名時間","梯次","身分","單位","姓名","人事號","職稱","餐食"];
+  const csv = [head].concat(rows.map(r => { const d = new Date(r.ts); return [isNaN(d) ? r.ts : d.toLocaleString("zh-TW"), r.session, r.identity, r.unit, r.name, r.empId, r.title, r.meal]; }))
+    .map(line => line.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `報名名單_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+});
+
+/* ---------- 金鑰 ---------- */
+$("#keyBtn").addEventListener("click", () => {
+  const v = $("#keyInput").value.trim();
+  if (!v) return;
+  dashKey = v;
+  try { sessionStorage.setItem(KEY_STORE, v); } catch(e){}
+  load();
+});
+$("#keyInput").addEventListener("keydown", e => { if (e.key === "Enter") $("#keyBtn").click(); });
+
+/* ---------- 提示框 ---------- */
+const tip = $("#tooltip");
+document.addEventListener("mousemove", e => {
+  const t = e.target.closest("[data-tip]");
+  if (!t){ tip.classList.remove("show"); return; }
+  tip.textContent = t.dataset.tip;
+  tip.classList.add("show");
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > innerWidth - 8) x = e.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = e.clientY - h - pad;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+});
+document.addEventListener("mouseleave", () => tip.classList.remove("show"));
+
+/* ---------- 啟動 ---------- */
+$("#refreshBtn").addEventListener("click", load);
+load();
+setInterval(load, CONFIG.POLL_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+</script>
+</body>
+</html>

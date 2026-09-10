@@ -33,6 +33,9 @@ const LIMITS = {
 // "session"：各梯次分別計算名額；"total"：三梯次共用名額（需與 index.html 的 CONFIG.QUOTA_SCOPE 一致）
 const QUOTA_SCOPE = 'session';
 
+// 儀表板（dashboard.html）存取金鑰：請改成自訂字串；留空則不需金鑰即可查看名單
+const DASHBOARD_KEY = 'chimei360';
+
 // 表頭（總表與各梯次分頁相同）
 const HEADERS = ['報名時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱', '手機簡碼/分機', 'E-mail', '出生日期', '身分證號', '餐食'];
 const COL = {}; HEADERS.forEach((h, i) => COL[h] = i + 1);   // 1-based 欄位索引
@@ -127,6 +130,31 @@ function getCounts_(master) {
   return counts;
 }
 
+/**
+ * 儀表板用的報名名單：只回傳非敏感欄位
+ * （不含 E-mail、手機、出生日期、身分證號）
+ */
+function getRegistrations_(master) {
+  const last = master.getLastRow();
+  if (last < 2) return [];
+  const rows = master.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  return rows
+    .filter(r => String(r[COL['姓名'] - 1]).trim() !== '')
+    .map(r => {
+      const t = r[COL['報名時間'] - 1];
+      return {
+        ts: (t instanceof Date) ? t.toISOString() : String(t),
+        session: String(r[COL['梯次'] - 1]).trim(),
+        identity: String(r[COL['身分'] - 1]).trim(),
+        unit: String(r[COL['單位'] - 1]).trim(),
+        name: String(r[COL['姓名'] - 1]).trim(),
+        empId: String(r[COL['人事號'] - 1]).trim(),
+        title: String(r[COL['職稱'] - 1]).trim(),
+        meal: String(r[COL['餐食'] - 1]).trim()
+      };
+    });
+}
+
 function usedCount_(counts, session, identity) {
   if (QUOTA_SCOPE === 'total') {
     return SESSIONS.reduce((n, s) => n + counts[s][identity], 0);
@@ -166,6 +194,24 @@ function doPost(e) {
       d = JSON.parse(e.postData.contents);
     } catch (err) {
       return json_({ ok: false, error: 'invalid', message: '無法解析資料' });
+    }
+
+    // 儀表板資料（dashboard.html 以 POST 帶 action=dashboard 與 key 取得）
+    if (d.action === 'dashboard') {
+      if (DASHBOARD_KEY && String(d.key || '') !== DASHBOARD_KEY) {
+        return json_({ ok: false, error: 'unauthorized', message: '金鑰不正確' });
+      }
+      const master = ensureSheet_(MASTER_SHEET);
+      return json_({
+        ok: true,
+        counts: getCounts_(master),
+        limits: LIMITS,
+        sessions: SESSIONS,
+        sessionDates: SESSION_DATES,
+        quotaScope: QUOTA_SCOPE,
+        registrations: getRegistrations_(master),
+        ts: new Date().toISOString()
+      });
     }
 
     const required = ['session', 'identity', 'unit', 'name', 'empId', 'title', 'phone', 'email', 'birth', 'nationalId', 'meal'];

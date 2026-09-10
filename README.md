@@ -14,6 +14,7 @@
 
 ```
 index.html              報名網頁（含 CSS / JS）
+dashboard.html          報名現況儀表板（名額統計、各梯次進度、名單明細）
 assets/poster.jpg       活動海報
 assets/itinerary.pdf    行程 PDF（頁首「下載行程」按鈕下載的檔案）
 apps-script/Code.gs     Google Apps Script 後端（名額即時統計、寫入 Google Sheets）
@@ -63,6 +64,15 @@ apps-script/Code.gs     Google Apps Script 後端（名額即時統計、寫入 
 `API_URL` 留空時為示範模式，名額計數僅存於瀏覽器的 localStorage。
 
 試算表選單「報名系統」提供「初始化分頁與表頭」與「顯示各梯次名額統計」兩個功能（重新整理試算表後出現）。
+
+## 報名現況儀表板（dashboard.html）
+
+- 不需金鑰即可看到：總報名人數與額滿率、各梯次各身分的報名進度、梯次 × 身分堆疊圖、名額一覽表。
+- 輸入金鑰後另外顯示：每日報名趨勢、單位分佈、餐食統計、可篩選／搜尋的報名名單，並可匯出 CSV。
+  名單只包含報名時間、梯次、身分、單位、姓名、人事號、職稱、餐食，不含 E-mail、手機、出生日期與身分證號。
+- 金鑰在 `Code.gs` 的 `DASHBOARD_KEY` 設定（預設 `chimei360`，請自行修改）。留空則不需金鑰。
+- 每 60 秒自動更新，也可按「重新整理」。
+- 修改 Code.gs 後記得「管理部署作業 → 編輯 → 新版本 → 部署」，儀表板的名單功能才會生效。
 
 ## 部署至 GitHub Pages
 
