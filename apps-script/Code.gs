@@ -12,8 +12,18 @@
  *    （也可以之後在試算表選單「報名系統 → 初始化分頁與表頭」執行）
  * 3. 部署 → 新增部署作業 → 類型「網頁應用程式」
  *      執行身分：我　　誰可以存取：所有人
- * 4. 複製「網頁應用程式網址」，貼到 index.html 的 CONFIG.API_URL。
+ * 4. 複製「網頁應用程式網址」，貼到 index.html 與 dashboard.html 的 CONFIG.API_URL。
  * 5. 之後若修改程式，需「管理部署作業 → 編輯 → 版本：新版本 → 部署」。
+ *
+ * 效能設計：
+ *   - 讀取（doGet、儀表板）只取得工作表、不做任何格式設定；格式設定只在 setupSheets 執行。
+ *   - 名額與儀表板結果以 CacheService 快取 CACHE_SECONDS 秒，成功報名後立即清除快取。
+ *
+ * CSV 備援（選配）：
+ *   - 執行「setupStatsPublishing」會建立一個只含統計數字（不含姓名與任何個資）的獨立試算表，
+ *     並安裝每 5 分鐘更新一次的觸發器；成功報名後也會立即更新。
+ *   - 之後請在該試算表「檔案 → 共用 → 發布到網路」，選擇「統計」分頁、格式 CSV，
+ *     把產生的網址貼到 dashboard.html 的 CONFIG.STATS_CSV_URL。
  */
 
 const SPREADSHEET_ID = '1vyVq2XwPbz8fI2JZrdNKhxQciLyYH2AzH-Pu_kX3iyI';
@@ -36,11 +46,19 @@ const QUOTA_SCOPE = 'session';
 // 儀表板（dashboard.html）存取金鑰：需與 dashboard.html 的 CONFIG.DASHBOARD_KEY 相同；兩者皆留空則不檢查
 const DASHBOARD_KEY = 'chimei360';
 
+// 快取秒數（名額與儀表板資料）
+const CACHE_SECONDS = 20;
+
 // 表頭（總表與各梯次分頁相同）
 const HEADERS = ['報名時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱', '手機簡碼/分機', 'E-mail', '出生日期', '身分證號', '餐食'];
 const COL = {}; HEADERS.forEach((h, i) => COL[h] = i + 1);   // 1-based 欄位索引
 const TEXT_COLS = ['人事號', '手機簡碼/分機', '出生日期', '身分證號'];   // 以純文字儲存，避免 0 開頭或日期被自動轉換
 const COL_WIDTHS = [150, 90, 110, 140, 90, 90, 120, 130, 220, 110, 120, 70];
+
+// 公開統計試算表（由 setupStatsPublishing 建立，ID 存於指令碼屬性）
+const STATS_PROP = 'STATS_SPREADSHEET_ID';
+const STATS_SHEET = '統計';
+const STATS_TITLE = '360°醫學人生 報名統計（公開，不含個資）';
 
 /* ------------------------------------------------------------------ */
 /* 試算表工具                                                          */
@@ -49,6 +67,13 @@ function ss_() {
   return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
 
+/** 輕量取得工作表：不做任何格式設定；分頁不存在時才建立 */
+function getSheet_(name) {
+  const sheet = ss_().getSheetByName(name);
+  return sheet || ensureSheet_(name);
+}
+
+/** 建立／校正分頁與表頭（只在 setupSheets 或分頁不存在時執行） */
 function ensureSheet_(name) {
   const ss = ss_();
   let sheet = ss.getSheetByName(name);
@@ -89,6 +114,7 @@ function setupSheets() {
 
   ss.setActiveSheet(master);
   SpreadsheetApp.flush();
+  clearCache_();
   Logger.log('分頁與表頭已建立：' + [MASTER_SHEET].concat(SESSIONS).join('、'));
 }
 
@@ -98,18 +124,36 @@ function onOpen() {
     .createMenu('報名系統')
     .addItem('初始化分頁與表頭', 'setupSheets')
     .addItem('顯示各梯次名額統計', 'showCounts')
+    .addSeparator()
+    .addItem('建立公開統計試算表（CSV 備援）', 'setupStatsPublishing')
+    .addItem('立即更新公開統計', 'publishStats')
+    .addItem('清除快取', 'clearCache_')
     .addToUi();
 }
 
 function showCounts() {
-  const counts = getCounts_(ensureSheet_(MASTER_SHEET));
+  const counts = getCounts_(getSheet_(MASTER_SHEET));
   const lines = SESSIONS.map(s => s + '（' + SESSION_DATES[s] + '）：' +
     Object.keys(LIMITS).map(k => k + ' ' + counts[s][k] + '/' + LIMITS[k]).join('、'));
   SpreadsheetApp.getUi().alert('各梯次已報名人數\n\n' + lines.join('\n'));
 }
 
 /* ------------------------------------------------------------------ */
-/* 名額統計                                                            */
+/* 快取                                                                */
+/* ------------------------------------------------------------------ */
+function cache_() { return CacheService.getScriptCache(); }
+function cacheGet_(key) {
+  try { const v = cache_().get(key); return v ? JSON.parse(v) : null; } catch (e) { return null; }
+}
+function cachePut_(key, obj) {
+  try { cache_().put(key, JSON.stringify(obj), CACHE_SECONDS); } catch (e) { /* 超過大小限制時略過 */ }
+}
+function clearCache_() {
+  try { cache_().removeAll(['counts', 'dashboard']); } catch (e) {}
+}
+
+/* ------------------------------------------------------------------ */
+/* 資料讀取與統計                                                      */
 /* ------------------------------------------------------------------ */
 function emptyCounts_() {
   const c = {};
@@ -117,42 +161,43 @@ function emptyCounts_() {
   return c;
 }
 
-/** 由總表統計各梯次、各身分已報名人數 */
-function getCounts_(master) {
-  const counts = emptyCounts_();
+/** 總表所有資料列（一次讀取） */
+function readMaster_(master) {
   const last = master.getLastRow();
-  if (last < 2) return counts;
-  const rows = master.getRange(2, COL['梯次'], last - 1, 2).getValues();   // 梯次、身分
+  if (last < 2) return [];
+  return master.getRange(2, 1, last - 1, HEADERS.length).getValues()
+    .filter(r => String(r[COL['姓名'] - 1]).trim() !== '');
+}
+
+/** 由資料列統計各梯次、各身分已報名人數 */
+function countsFromRows_(rows) {
+  const counts = emptyCounts_();
   rows.forEach(r => {
-    const s = String(r[0]).trim(), k = String(r[1]).trim();
+    const s = String(r[COL['梯次'] - 1]).trim(), k = String(r[COL['身分'] - 1]).trim();
     if (counts[s] && counts[s][k] !== undefined) counts[s][k]++;
   });
   return counts;
 }
 
-/**
- * 儀表板用的報名名單：只回傳非敏感欄位
- * （不含 E-mail、手機、出生日期、身分證號）
- */
-function getRegistrations_(master) {
-  const last = master.getLastRow();
-  if (last < 2) return [];
-  const rows = master.getRange(2, 1, last - 1, HEADERS.length).getValues();
-  return rows
-    .filter(r => String(r[COL['姓名'] - 1]).trim() !== '')
-    .map(r => {
-      const t = r[COL['報名時間'] - 1];
-      return {
-        ts: (t instanceof Date) ? t.toISOString() : String(t),
-        session: String(r[COL['梯次'] - 1]).trim(),
-        identity: String(r[COL['身分'] - 1]).trim(),
-        unit: String(r[COL['單位'] - 1]).trim(),
-        name: String(r[COL['姓名'] - 1]).trim(),
-        empId: String(r[COL['人事號'] - 1]).trim(),
-        title: String(r[COL['職稱'] - 1]).trim(),
-        meal: String(r[COL['餐食'] - 1]).trim()
-      };
-    });
+function getCounts_(master) {
+  return countsFromRows_(readMaster_(master));
+}
+
+/** 儀表板用的報名名單：只回傳非敏感欄位（不含 E-mail、手機、出生日期、身分證號） */
+function registrationsFromRows_(rows) {
+  return rows.map(r => {
+    const t = r[COL['報名時間'] - 1];
+    return {
+      ts: (t instanceof Date) ? t.toISOString() : String(t),
+      session: String(r[COL['梯次'] - 1]).trim(),
+      identity: String(r[COL['身分'] - 1]).trim(),
+      unit: String(r[COL['單位'] - 1]).trim(),
+      name: String(r[COL['姓名'] - 1]).trim(),
+      empId: String(r[COL['人事號'] - 1]).trim(),
+      title: String(r[COL['職稱'] - 1]).trim(),
+      meal: String(r[COL['餐食'] - 1]).trim()
+    };
+  });
 }
 
 function usedCount_(counts, session, identity) {
@@ -167,53 +212,58 @@ function json_(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-/* ------------------------------------------------------------------ */
-/* Web App                                                             */
-/* ------------------------------------------------------------------ */
-
-/** GET：回傳各梯次、各身分已報名人數與限額 */
-function doGet(e) {
-  const master = ensureSheet_(MASTER_SHEET);
-  return json_({
+function countsPayload_(counts) {
+  return {
     ok: true,
-    counts: getCounts_(master),
+    counts: counts,
     limits: LIMITS,
     sessions: SESSIONS,
     quotaScope: QUOTA_SCOPE,
     ts: new Date().toISOString()
-  });
+  };
 }
 
-/** POST：新增一筆報名（body 為 JSON 字串），同時寫入總表與梯次分頁 */
+/* ------------------------------------------------------------------ */
+/* Web App                                                             */
+/* ------------------------------------------------------------------ */
+
+/** GET：回傳各梯次、各身分已報名人數與限額（有快取） */
+function doGet(e) {
+  const cached = cacheGet_('counts');
+  if (cached) { cached.cached = true; return json_(cached); }
+  const payload = countsPayload_(getCounts_(getSheet_(MASTER_SHEET)));
+  cachePut_('counts', payload);
+  return json_(payload);
+}
+
+/** POST：新增一筆報名（body 為 JSON 字串），或儀表板資料查詢（action=dashboard） */
 function doPost(e) {
+  let d;
+  try {
+    d = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return json_({ ok: false, error: 'invalid', message: '無法解析資料' });
+  }
+
+  // 儀表板資料（不需鎖定）
+  if (d.action === 'dashboard') {
+    if (DASHBOARD_KEY && String(d.key || '') !== DASHBOARD_KEY) {
+      return json_({ ok: false, error: 'unauthorized', message: '金鑰不正確' });
+    }
+    const cached = cacheGet_('dashboard');
+    if (cached) { cached.cached = true; return json_(cached); }
+    const rows = readMaster_(getSheet_(MASTER_SHEET));
+    const payload = countsPayload_(countsFromRows_(rows));
+    payload.sessionDates = SESSION_DATES;
+    payload.registrations = registrationsFromRows_(rows);
+    cachePut_('dashboard', payload);
+    return json_(payload);
+  }
+
+  // 報名寫入（需鎖定避免同時報名超額）
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    let d;
-    try {
-      d = JSON.parse(e.postData.contents);
-    } catch (err) {
-      return json_({ ok: false, error: 'invalid', message: '無法解析資料' });
-    }
-
-    // 儀表板資料（dashboard.html 以 POST 帶 action=dashboard 與 key 取得）
-    if (d.action === 'dashboard') {
-      if (DASHBOARD_KEY && String(d.key || '') !== DASHBOARD_KEY) {
-        return json_({ ok: false, error: 'unauthorized', message: '金鑰不正確' });
-      }
-      const master = ensureSheet_(MASTER_SHEET);
-      return json_({
-        ok: true,
-        counts: getCounts_(master),
-        limits: LIMITS,
-        sessions: SESSIONS,
-        sessionDates: SESSION_DATES,
-        quotaScope: QUOTA_SCOPE,
-        registrations: getRegistrations_(master),
-        ts: new Date().toISOString()
-      });
-    }
-
     const required = ['session', 'identity', 'unit', 'name', 'empId', 'title', 'phone', 'email', 'birth', 'nationalId', 'meal'];
     for (const k of required) {
       if (d[k] === undefined || d[k] === null || String(d[k]).trim() === '') {
@@ -230,20 +280,17 @@ function doPost(e) {
     if (!/^[A-Z][1289]\d{8}$/.test(nationalId)) return json_({ ok: false, error: 'invalid', message: '身分證號格式不正確' });
     if (['葷食', '素食'].indexOf(String(d.meal)) === -1) return json_({ ok: false, error: 'invalid', message: '餐食不正確' });
 
-    const master = ensureSheet_(MASTER_SHEET);
-    const counts = getCounts_(master);
+    const master = getSheet_(MASTER_SHEET);
+    const rows = readMaster_(master);
+    const counts = countsFromRows_(rows);
 
     // 重複人事號檢查（總表）
-    const last = master.getLastRow();
-    if (last >= 2) {
-      const rows = master.getRange(2, COL['梯次'], last - 1, COL['人事號'] - COL['梯次'] + 1).getValues();
-      for (const r of rows) {
-        if (String(r[COL['人事號'] - COL['梯次']]).trim() === empId) {
-          return json_({
-            ok: false, error: 'duplicate', counts: counts,
-            message: '此人事號已報名' + String(r[0]).trim() + '，如需修改請聯絡教學部（分機 57440）。'
-          });
-        }
+    for (const r of rows) {
+      if (String(r[COL['人事號'] - 1]).trim() === empId) {
+        return json_({
+          ok: false, error: 'duplicate', counts: counts,
+          message: '此人事號已報名' + String(r[COL['梯次'] - 1]).trim() + '，如需修改請聯絡教學部（分機 57440）。'
+        });
       }
     }
 
@@ -267,10 +314,15 @@ function doPost(e) {
       String(d.meal).trim()
     ];
     appendRow_(master, row);
-    appendRow_(ensureSheet_(session), row);
+    appendRow_(getSheet_(session), row);
     SpreadsheetApp.flush();
+    clearCache_();
 
-    return json_({ ok: true, counts: getCounts_(master) });
+    counts[session][identity]++;
+    // 更新公開統計（若已設定；失敗不影響報名）
+    try { publishStats(); } catch (err) { Logger.log('publishStats 失敗：' + err); }
+
+    return json_({ ok: true, counts: counts });
   } finally {
     lock.releaseLock();
   }
@@ -282,4 +334,83 @@ function appendRow_(sheet, row) {
   TEXT_COLS.forEach(h => sheet.getRange(r, COL[h]).setNumberFormat('@'));
   sheet.getRange(r, COL['報名時間']).setNumberFormat('yyyy/MM/dd HH:mm:ss');
   sheet.getRange(r, 1, 1, row.length).setValues([row]);
+}
+
+/* ------------------------------------------------------------------ */
+/* 公開統計試算表（CSV 備援）                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 一次性設定：建立公開統計試算表、安裝每 5 分鐘的更新觸發器、立即寫入一次。
+ * 執行後請到 Logger（執行紀錄）複製試算表網址，並依說明「發布到網路」。
+ */
+function setupStatsPublishing() {
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty(STATS_PROP);
+  let stats = null;
+  if (id) { try { stats = SpreadsheetApp.openById(id); } catch (e) { stats = null; } }
+  if (!stats) {
+    stats = SpreadsheetApp.create(STATS_TITLE);
+    props.setProperty(STATS_PROP, stats.getId());
+    const first = stats.getSheets()[0];
+    first.setName(STATS_SHEET);
+  }
+  // 觸發器（每 5 分鐘）
+  const has = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'publishStats');
+  if (!has) ScriptApp.newTrigger('publishStats').timeBased().everyMinutes(5).create();
+
+  publishStats();
+  const url = stats.getUrl();
+  Logger.log('公開統計試算表：' + url);
+  Logger.log('請開啟該試算表 → 檔案 → 共用 → 發布到網路 → 選擇「' + STATS_SHEET + '」分頁、格式「逗號分隔值 (.csv)」→ 發布，再把網址貼到 dashboard.html 的 CONFIG.STATS_CSV_URL。');
+  try {
+    SpreadsheetApp.getUi().alert('公開統計試算表已建立：\n' + url + '\n\n請在該試算表「檔案 → 共用 → 發布到網路」，選擇「' + STATS_SHEET + '」分頁、CSV 格式，並把網址貼到 dashboard.html 的 CONFIG.STATS_CSV_URL。');
+  } catch (e) { /* 非 UI 環境 */ }
+  return url;
+}
+
+/**
+ * 把「不含個資」的統計結果寫到公開統計試算表（長格式）：
+ *   類型 | 鍵1 | 鍵2 | 數值 | 更新時間
+ *   名額 | 梯次 | 身分 | 已報名
+ *   限額 | 身分 |      | 限額
+ *   餐食 | 梯次 | 葷食/素食 | 人數
+ *   每日 | 日期(yyyy-MM-dd) |  | 人數
+ *   單位 | 單位 |      | 人數
+ *   設定 | quotaScope | | session/total
+ */
+function publishStats() {
+  const id = PropertiesService.getScriptProperties().getProperty(STATS_PROP);
+  if (!id) return;   // 尚未執行 setupStatsPublishing
+  let stats;
+  try { stats = SpreadsheetApp.openById(id); } catch (e) { return; }
+  let sheet = stats.getSheetByName(STATS_SHEET) || stats.insertSheet(STATS_SHEET);
+
+  const rows = readMaster_(getSheet_(MASTER_SHEET));
+  const counts = countsFromRows_(rows);
+  const tz = Session.getScriptTimeZone();
+  const now = Utilities.formatDate(new Date(), tz, 'yyyy/MM/dd HH:mm:ss');
+  const out = [['類型', '鍵1', '鍵2', '數值', '更新時間']];
+
+  out.push(['設定', 'quotaScope', '', QUOTA_SCOPE, now]);
+  Object.keys(LIMITS).forEach(k => out.push(['限額', k, '', LIMITS[k], now]));
+  SESSIONS.forEach(s => Object.keys(LIMITS).forEach(k => out.push(['名額', s, k, counts[s][k], now])));
+
+  const meals = {}, daily = {}, units = {};
+  SESSIONS.forEach(s => meals[s] = { '葷食': 0, '素食': 0 });
+  rows.forEach(r => {
+    const s = String(r[COL['梯次'] - 1]).trim();
+    const m = String(r[COL['餐食'] - 1]).trim();
+    if (meals[s] && meals[s][m] !== undefined) meals[s][m]++;
+    const t = r[COL['報名時間'] - 1];
+    if (t instanceof Date) { const d = Utilities.formatDate(t, tz, 'yyyy-MM-dd'); daily[d] = (daily[d] || 0) + 1; }
+    const u = String(r[COL['單位'] - 1]).trim() || '（未填）';
+    units[u] = (units[u] || 0) + 1;
+  });
+  SESSIONS.forEach(s => ['葷食', '素食'].forEach(m => out.push(['餐食', s, m, meals[s][m], now])));
+  Object.keys(daily).sort().forEach(d => out.push(['每日', d, '', daily[d], now]));
+  Object.keys(units).sort((a, b) => units[b] - units[a]).forEach(u => out.push(['單位', u, '', units[u], now]));
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, out.length, 5).setValues(out);
 }
