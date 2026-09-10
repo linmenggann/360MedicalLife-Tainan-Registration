@@ -230,8 +230,12 @@ const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
   POLL_MS: 60000,
   DASHBOARD_KEY: "chimei360",   // 需與 Code.gs 的 DASHBOARD_KEY 相同；兩者皆留空則不檢查
-  FETCH_TIMEOUT_MS: 12000,      // Apps Script 逾時秒數，超過改用 CSV 備援
-  STATS_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRENqd1xE3bGlyBYxRriGrghb2x3Q97jWBWpQHxe_6eyCNf3XvHV1aht4keHr-CPkNbc9HPWoKe93K5/pub?output=csv"   // 公開統計試算表「發布到網路」的 CSV 網址
+  FETCH_TIMEOUT_MS: 12000,      // Apps Script 逾時秒數，超過改用備援
+  // 備援 1：公開統計試算表的 GViz 端點（即時）。ID 會自動由後端取得並記住；也可在此手動填入
+  STATS_SPREADSHEET_ID: "",
+  STATS_SHEET: "統計",
+  // 備援 2：公開統計試算表「發布到網路」的 CSV 網址（約延遲數分鐘）
+  STATS_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRENqd1xE3bGlyBYxRriGrghb2x3Q97jWBWpQHxe_6eyCNf3XvHV1aht4keHr-CPkNbc9HPWoKe93K5/pub?output=csv"
 };
 const SESSIONS = [
   { key: "第一梯次", date: "115/10/17（六）–10/18（日）", short: "10/17–10/18" },
@@ -247,6 +251,7 @@ const IDENTITIES = [
 const PER_SESSION_LIMIT = IDENTITIES.reduce((n, i) => n + i.limit, 0);
 
 const LS_CACHE = "tainan360_dashboard_cache";
+const LS_STATS_ID = "tainan360_stats_spreadsheet_id";
 // agg：{ meals:{梯次:{葷食,素食}}, daily:{yyyy-mm-dd:n}, units:{單位:n} }；來自名單或 CSV 統計
 let state = { counts: null, limits: null, quotaScope: "session", registrations: null, agg: null, ts: null, source: "", unlocked: false, online: false };
 
@@ -275,7 +280,8 @@ function setStatus(kind, text){
 }
 
 /* ---------------- 資料讀取 ---------------- */
-/* 順序：① 先顯示瀏覽器保存的上次資料 → ② Apps Script（逾時 12 秒）→ ③ 公開統計 CSV 備援 → ④ 保留上次資料 */
+/* 順序：① 先顯示瀏覽器保存的上次資料 → ② Apps Script（逾時 12 秒）
+         → ③ 公開統計試算表 GViz 端點（即時）→ ④ 發布到網路的 CSV（延遲數分鐘）→ ⑤ 保留上次資料 */
 
 function fetchWithTimeout(url, opts){
   const ctrl = new AbortController();
@@ -321,9 +327,56 @@ function parseCsv(text){
   if (field !== "" || row.length){ row.push(field); rows.push(row.splice(0)); }
   return rows.filter(r => r.some(v => v !== ""));
 }
-function statsFromCsv(text){
-  const rows = parseCsv(text);
-  if (!rows.length || rows[0][0] !== "類型") throw new Error("CSV 格式不符");
+function statsFromCsv(text){ return statsFromRows(parseCsv(text)); }
+
+/* ---- GViz 端點：docs.google.com/spreadsheets/d/{ID}/gviz/tq ---- */
+function statsSpreadsheetId(){
+  let id = CONFIG.STATS_SPREADSHEET_ID || "";
+  if (!id){ try { id = localStorage.getItem(LS_STATS_ID) || ""; } catch(e){} }
+  return id;
+}
+function rememberStatsId(id){
+  if (!id) return;
+  try { localStorage.setItem(LS_STATS_ID, id); } catch(e){}
+}
+function gvizUrl(id, out){
+  return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/gviz/tq?tqx=out:${out}&headers=1&sheet=${encodeURIComponent(CONFIG.STATS_SHEET)}&t=${Date.now()}`;
+}
+/* JSONP 備用讀法：不受 CORS 限制 */
+function gvizJsonp(id){
+  return new Promise((resolve, reject) => {
+    const cb = "gvizCb_" + Date.now();
+    const s = document.createElement("script");
+    const timer = setTimeout(() => { cleanup(); reject(new Error("GViz JSONP 逾時")); }, CONFIG.FETCH_TIMEOUT_MS);
+    function cleanup(){ clearTimeout(timer); delete window[cb]; s.remove(); }
+    window[cb] = resp => { cleanup(); resolve(resp); };
+    s.onerror = () => { cleanup(); reject(new Error("GViz JSONP 載入失敗")); };
+    s.src = gvizUrl(id, "json") + "&responseHandler=" + cb;
+    document.head.appendChild(s);
+  });
+}
+function rowsFromGvizTable(resp){
+  if (!resp || resp.status === "error" || !resp.table) throw new Error("GViz 回應錯誤");
+  const cell = c => (c == null || c.v == null) ? "" : (c.f != null ? String(c.f) : String(c.v));
+  const head = resp.table.cols.map(c => c.label || "");
+  const body = resp.table.rows.map(r => (r.c || []).map(cell));
+  return [head].concat(body);
+}
+async function fetchGvizStats(){
+  const id = statsSpreadsheetId();
+  if (!id) throw new Error("尚無統計試算表 ID");
+  try {
+    const res = await fetchWithTimeout(gvizUrl(id, "csv"));
+    if (!res.ok) throw new Error("GViz HTTP " + res.status);
+    return statsFromCsv(await res.text());
+  } catch(err){
+    console.warn("GViz CSV 讀取失敗，改用 JSONP", err);
+    return statsFromRows(rowsFromGvizTable(await gvizJsonp(id)));
+  }
+}
+
+function statsFromRows(rows){
+  if (!rows.length || String(rows[0][0]).trim() !== "類型") throw new Error("統計資料格式不符");
   const counts = emptyCounts(), limits = {}, agg = { meals: Object.fromEntries(SESSIONS.map(s => [s.key, { "葷食": 0, "素食": 0 }])), daily: {}, units: {} };
   let quotaScope = "session", updated = "";
   rows.slice(1).forEach(([type, k1, k2, v, ts]) => {
@@ -386,12 +439,28 @@ async function load(){
     state.ts = new Date();
     state.source = "api";
     ok = true;
+    rememberStatsId(data.statsSpreadsheetId);
     setStatus("ok", "已連線・更新 " + state.ts.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) + (data.cached ? "（快取）" : ""));
   } catch(err){
     console.warn("Apps Script 讀取失敗，改用備援", err);
   }
 
-  // ③ 公開統計 CSV 備援
+  // ③ GViz 端點（即時）
+  if (!ok && statsSpreadsheetId()){
+    try {
+      const st = await fetchGvizStats();
+      state.counts = st.counts; state.limits = st.limits; state.quotaScope = st.quotaScope;
+      state.agg = st.agg; state.registrations = null; state.unlocked = false;
+      state.ts = new Date(); state.source = "gviz";
+      ok = true;
+      setStatus("off", "Apps Script 無回應，改用 GViz 即時統計" + (st.updated ? "（統計更新於 " + st.updated + "）" : ""));
+      notice("warn", "目前顯示的是公開統計試算表的即時統計（GViz 端點，不含報名名單）。Apps Script 恢復後會自動切回即時資料。");
+    } catch(err){
+      console.warn("GViz 讀取失敗", err);
+    }
+  }
+
+  // ④ 發布到網路的 CSV 備援
   if (!ok && CONFIG.STATS_CSV_URL){
     try {
       const res = await fetchWithTimeout(CONFIG.STATS_CSV_URL + (CONFIG.STATS_CSV_URL.includes("?") ? "&" : "?") + "t=" + Date.now());
@@ -407,11 +476,11 @@ async function load(){
     }
   }
 
-  // ④ 全部失敗：保留上次資料
+  // ⑤ 全部失敗：保留上次資料
   if (!ok){
     state.online = false;
     setStatus("err", "無法連線" + (state.ts ? "・顯示 " + fmtTime(state.ts) + " 的資料" : ""));
-    if (!state.counts) notice("error", "無法取得資料，請確認網路連線或 Apps Script 部署狀態。" + (CONFIG.STATS_CSV_URL ? "" : "（可依 README 設定 CSV 備援）"));
+    if (!state.counts) notice("error", "無法取得資料，請確認網路連線或 Apps Script 部署狀態。" + (CONFIG.STATS_CSV_URL || statsSpreadsheetId() ? "" : "（可依 README 設定統計試算表備援）"));
   } else {
     state.online = true;
     saveCache();

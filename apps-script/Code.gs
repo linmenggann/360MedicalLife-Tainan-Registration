@@ -19,11 +19,12 @@
  *   - 讀取（doGet、儀表板）只取得工作表、不做任何格式設定；格式設定只在 setupSheets 執行。
  *   - 名額與儀表板結果以 CacheService 快取 CACHE_SECONDS 秒，成功報名後立即清除快取。
  *
- * CSV 備援（選配）：
+ * 統計試算表備援（選配）：
  *   - 執行「setupStatsPublishing」會建立一個只含統計數字（不含姓名與任何個資）的獨立試算表，
- *     並安裝每 5 分鐘更新一次的觸發器；成功報名後也會立即更新。
- *   - 之後請在該試算表「檔案 → 共用 → 發布到網路」，選擇「統計」分頁、格式 CSV，
- *     把產生的網址貼到 dashboard.html 的 CONFIG.STATS_CSV_URL。
+ *     設為「知道連結的任何人可檢視」（供 GViz 端點即時讀取），並安裝每 5 分鐘更新一次的觸發器；
+ *     成功報名後也會立即更新。試算表 ID 會隨名額 API 回傳給儀表板。
+ *   - 若還要有「發布到網路」的 CSV 備援：在該試算表「檔案 → 共用 → 發布到網路」，
+ *     選擇「統計」分頁、格式 CSV，把產生的網址貼到 dashboard.html 的 CONFIG.STATS_CSV_URL。
  */
 
 const SPREADSHEET_ID = '1vyVq2XwPbz8fI2JZrdNKhxQciLyYH2AzH-Pu_kX3iyI';
@@ -125,8 +126,9 @@ function onOpen() {
     .addItem('初始化分頁與表頭', 'setupSheets')
     .addItem('顯示各梯次名額統計', 'showCounts')
     .addSeparator()
-    .addItem('建立公開統計試算表（CSV 備援）', 'setupStatsPublishing')
+    .addItem('建立公開統計試算表（GViz / CSV 備援）', 'setupStatsPublishing')
     .addItem('立即更新公開統計', 'publishStats')
+    .addItem('統計試算表設為連結可檢視', 'shareStatsSpreadsheet')
     .addItem('清除快取', 'clearCache_')
     .addToUi();
 }
@@ -219,6 +221,8 @@ function countsPayload_(counts) {
     limits: LIMITS,
     sessions: SESSIONS,
     quotaScope: QUOTA_SCOPE,
+    statsSpreadsheetId: PropertiesService.getScriptProperties().getProperty(STATS_PROP) || '',
+    statsSheet: STATS_SHEET,
     ts: new Date().toISOString()
   };
 }
@@ -359,14 +363,32 @@ function setupStatsPublishing() {
   const has = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'publishStats');
   if (!has) ScriptApp.newTrigger('publishStats').timeBased().everyMinutes(5).create();
 
+  // 設為「知道連結的任何人可檢視」，GViz 端點才讀得到（此試算表不含個資）
+  shareStatsSpreadsheet();
+
   publishStats();
+  clearCache_();
   const url = stats.getUrl();
+  const gviz = gvizUrl_(stats.getId());
   Logger.log('公開統計試算表：' + url);
-  Logger.log('請開啟該試算表 → 檔案 → 共用 → 發布到網路 → 選擇「' + STATS_SHEET + '」分頁、格式「逗號分隔值 (.csv)」→ 發布，再把網址貼到 dashboard.html 的 CONFIG.STATS_CSV_URL。');
+  Logger.log('GViz 端點（即時）：' + gviz);
+  Logger.log('若也要發布 CSV 備援：開啟該試算表 → 檔案 → 共用 → 發布到網路 → 選擇「' + STATS_SHEET + '」分頁、格式「逗號分隔值 (.csv)」→ 發布，再把網址貼到 dashboard.html 的 CONFIG.STATS_CSV_URL。');
   try {
-    SpreadsheetApp.getUi().alert('公開統計試算表已建立：\n' + url + '\n\n請在該試算表「檔案 → 共用 → 發布到網路」，選擇「' + STATS_SHEET + '」分頁、CSV 格式，並把網址貼到 dashboard.html 的 CONFIG.STATS_CSV_URL。');
+    SpreadsheetApp.getUi().alert('公開統計試算表已建立並設為「知道連結者可檢視」：\n' + url + '\n\nGViz 端點：\n' + gviz + '\n\n儀表板會自動從後端取得此試算表 ID；若要在後端無回應時也能讀取，請把 ID 填到 dashboard.html 的 CONFIG.STATS_SPREADSHEET_ID。');
   } catch (e) { /* 非 UI 環境 */ }
   return url;
+}
+
+/** 把公開統計試算表設為「知道連結的任何人可檢視」（GViz 端點需要；試算表不含個資） */
+function shareStatsSpreadsheet() {
+  const id = PropertiesService.getScriptProperties().getProperty(STATS_PROP);
+  if (!id) throw new Error('請先執行 setupStatsPublishing');
+  DriveApp.getFileById(id).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  Logger.log('已設定共用：知道連結的任何人可檢視（' + id + '）');
+}
+
+function gvizUrl_(id) {
+  return 'https://docs.google.com/spreadsheets/d/' + id + '/gviz/tq?tqx=out:csv&headers=1&sheet=' + encodeURIComponent(STATS_SHEET);
 }
 
 /**
