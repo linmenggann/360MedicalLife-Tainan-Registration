@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>360°醫學人生｜走進臺南，走進生活｜活動報名</title>
+<meta name="description" content="奇美醫院教學部「360°醫學人生｜走進臺南，走進生活」二日走讀活動報名。對象：西醫UGY、西醫PGY、醫事職類PGY及臨床教師。">
+<meta property="og:title" content="360°醫學人生｜走進臺南，走進生活">
+<meta property="og:description" content="走讀府城街巷、市場、廟宇與聚落，從飲食、信仰、文化與土地認識民眾的生活樣貌。">
+<meta property="og:image" content="assets/poster.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cline x1='32' y1='2' x2='32' y2='12' stroke='%235b2418' stroke-width='3'/%3E%3Cellipse cx='32' cy='32' rx='20' ry='22' fill='%23e4572e'/%3E%3Crect x='20' y='8' width='24' height='6' rx='2' fill='%23d9a441'/%3E%3Crect x='20' y='50' width='24' height='6' rx='2' fill='%23d9a441'/%3E%3Cline x1='32' y1='56' x2='32' y2='63' stroke='%23d9a441' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700;900&display=swap" rel="stylesheet">
+<style>
+/* ---------- 色彩：紅磚、朱紅、廟宇金、米白、紅樹林綠、四草水色 ---------- */
+:root{
+  --brick:#b4432f;
+  --brick-deep:#8a2f22;
+  --vermilion:#c8352b;
+  --lantern:#e4572e;
+  --gold:#d9a441;
+  --gold-soft:#f1dfae;
+  --rice:#f7efdd;
+  --cream:#fbf7ee;
+  --paper:#fffdf8;
+  --ink:#2b2a28;
+  --ink-soft:#5f5a53;
+  --line:#e6dcc8;
+  --green:#3e7c59;
+  --green-deep:#2c5a41;
+  --green-soft:#dfe8cf;
+  --water:#6fa3b8;
+  --water-soft:#d3e2e8;
+  --peach:#f7d9c4;
+  --shadow:0 10px 30px rgba(74,43,26,.12);
+  --radius:18px;
+  --serif:"Noto Serif TC","PingFang TC","Microsoft JhengHei",serif;
+  --sans:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  font-family:var(--sans);
+  color:var(--ink);
+  background:var(--cream);
+  line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+img{max-width:100%;display:block}
+a{color:inherit}
+h1,h2,h3,h4{font-family:var(--serif);margin:0;line-height:1.25}
+.container{width:min(1140px,92%);margin:0 auto}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- 按鈕 ---------- */
+.btn{
+  display:inline-flex;align-items:center;gap:.5rem;
+  padding:.7rem 1.35rem;border-radius:999px;border:2px solid transparent;
+  font-weight:700;font-size:.98rem;text-decoration:none;cursor:pointer;
+  transition:transform .2s,box-shadow .2s,background .2s,color .2s;
+  font-family:var(--sans);white-space:nowrap;
+}
+.btn svg{width:1.1em;height:1.1em;flex:none}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(139,47,34,.25)}
+.btn:active{transform:translateY(0)}
+.btn-primary{background:var(--brick);color:#fff}
+.btn-primary:hover{background:var(--vermilion)}
+.btn-outline{background:transparent;color:var(--brick);border-color:var(--brick)}
+.btn-outline:hover{background:var(--brick);color:#fff}
+.btn-gold{background:var(--gold);color:#3b2a0c}
+.btn-gold:hover{background:#e6b552}
+.btn[disabled]{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* ---------- 頁首 ---------- */
+.site-header{
+  position:sticky;top:0;z-index:50;
+  background:rgba(251,247,238,.9);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.site-header .container{display:flex;align-items:center;justify-content:space-between;gap:1rem;min-height:68px}
+.brand{display:flex;align-items:center;gap:.7rem;text-decoration:none}
+.brand-mark{
+  width:42px;height:42px;border-radius:12px;flex:none;
+  background:linear-gradient(135deg,var(--brick),var(--lantern));
+  display:grid;place-items:center;color:#fff;font-family:var(--serif);font-weight:900;font-size:.85rem;
+  box-shadow:0 4px 12px rgba(180,67,47,.35);
+}
+.brand-text{display:flex;flex-direction:column;line-height:1.2}
+.brand-text small{font-size:.72rem;color:var(--ink-soft);letter-spacing:.08em}
+.brand-text strong{font-family:var(--serif);font-size:1.05rem;color:var(--brick-deep)}
+.nav{display:flex;gap:1.4rem;font-weight:500;font-size:.95rem}
+.nav a{text-decoration:none;color:var(--ink-soft);position:relative;padding:.2rem 0}
+.nav a::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:2px;background:var(--brick);transform:scaleX(0);transition:transform .25s;transform-origin:left}
+.nav a:hover{color:var(--brick)}
+.nav a:hover::after{transform:scaleX(1)}
+.header-actions{display:flex;gap:.6rem;align-items:center}
+@media (max-width:860px){.nav{display:none}}
+@media (max-width:700px){
+  .site-header .container{min-height:60px}
+  .brand-text small{display:none}
+  .brand-text strong{font-size:.98rem}
+  .brand-mark{width:36px;height:36px;font-size:.75rem}
+  .header-actions .btn-register{display:none}
+  .btn-download .btn-label-long{display:none}
+  .btn-download{padding:.55rem 1rem}
+}
+@media (max-width:480px){.brand-sub{display:none}}
+@media (min-width:701px){.btn-download .btn-label-short{display:none}}
+
+/* ---------- Hero ---------- */
+.hero{
+  position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 15% 20%,rgba(241,223,174,.55),transparent 40%),
+    radial-gradient(circle at 85% 10%,rgba(211,226,232,.8),transparent 45%),
+    linear-gradient(180deg,#fdf9f0 0%,#f6e9d3 70%,#e7d9bf 100%);
+}
+.hero::before{ /* 紅磚紋理 */
+  content:"";position:absolute;inset:0;opacity:.06;pointer-events:none;
+  background-image:
+    linear-gradient(var(--brick-deep) 1px,transparent 1px),
+    linear-gradient(90deg,var(--brick-deep) 1px,transparent 1px);
+  background-size:100% 22px,66px 22px;
+}
+.hero-inner{
+  position:relative;z-index:2;
+  display:grid;grid-template-columns:1.15fr .85fr;gap:2.5rem;align-items:center;
+  padding:3.5rem 0 2rem;
+}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:.6rem;
+  font-size:.85rem;letter-spacing:.14em;color:var(--brick-deep);font-weight:700;
+}
+.eyebrow::before{content:"";width:34px;height:2px;background:var(--brick)}
+.hero h1{
+  font-size:clamp(2.6rem,6vw,4.6rem);font-weight:900;color:#1f3a3d;
+  letter-spacing:.02em;margin:.6rem 0 .1rem;
+}
+.hero h1 .deg{color:var(--brick)}
+.hero h2{
+  font-size:clamp(1.5rem,3.6vw,2.4rem);font-weight:700;color:#274a4d;letter-spacing:.06em;
+}
+.hero .tagline{
+  margin:1rem 0 1.2rem;color:var(--ink-soft);font-size:1.05rem;
+}
+.hero .tagline em{font-style:normal;font-family:var(--serif);color:var(--brick-deep);font-weight:700}
+.sessions{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}
+.chip{
+  display:inline-flex;flex-direction:column;align-items:center;
+  padding:.45rem .95rem;border-radius:14px;line-height:1.3;
+  font-family:var(--serif);font-weight:700;color:#3b3125;
+  box-shadow:0 3px 10px rgba(74,43,26,.08);
+}
+.chip small{font-size:.72rem;font-weight:700;letter-spacing:.08em;opacity:.8}
+.chip span{font-size:1.02rem}
+.chip-1{background:var(--green-soft)}
+.chip-2{background:var(--peach)}
+.chip-3{background:var(--water-soft)}
+.chip-days{background:var(--gold-soft);justify-content:center}
+.audience{font-size:.98rem;color:var(--ink);margin-bottom:1.4rem}
+.audience b{color:var(--brick-deep);font-family:var(--serif)}
+.hero-cta{display:flex;flex-wrap:wrap;gap:.7rem}
+.poster-frame{
+  position:relative;
+  transform:rotate(2.5deg);
+  transition:transform .4s;
+}
+.poster-frame:hover{transform:rotate(0) scale(1.02)}
+.poster-frame img{
+  border-radius:14px;border:8px solid #fff;
+  box-shadow:0 20px 40px rgba(74,43,26,.25);
+}
+.poster-frame .stamp{
+  position:absolute;right:-14px;top:-14px;
+  width:78px;height:78px;border-radius:50%;
+  background:var(--brick);color:#fff;font-family:var(--serif);font-weight:900;
+  display:grid;place-items:center;text-align:center;font-size:.8rem;line-height:1.2;
+  border:3px dashed rgba(255,255,255,.7);box-shadow:0 8px 18px rgba(139,47,34,.4);
+  transform:rotate(12deg);
+  animation:stampPulse 3s ease-in-out infinite;
+}
+@keyframes stampPulse{0%,100%{transform:rotate(12deg) scale(1)}50%{transform:rotate(12deg) scale(1.06)}}
+@media (max-width:900px){
+  .hero-inner{grid-template-columns:1fr;padding-top:2.5rem}
+  .poster-frame{max-width:520px;margin:0 auto;transform:rotate(0)}
+}
+
+/* ---------- Hero 動態場景 ---------- */
+.scene{position:relative;z-index:1;display:block;width:100%;height:auto;margin-top:-1rem}
+.scene svg{display:block;width:100%;height:auto}
+.cloud{animation:drift 40s ease-in-out infinite alternate}
+.cloud.c2{animation-duration:55s;animation-delay:-20s}
+.cloud.c3{animation-duration:48s;animation-delay:-10s}
+@keyframes drift{from{transform:translateX(0)}to{transform:translateX(70px)}}
+.lantern{animation:swing 3.4s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 0}
+.lantern.l2{animation-delay:-1.1s;animation-duration:3.9s}
+.lantern.l3{animation-delay:-2.2s;animation-duration:3.1s}
+@keyframes swing{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+.smoke{animation:rise 5s ease-out infinite;transform-box:fill-box;transform-origin:50% 100%;opacity:0}
+.smoke.s2{animation-delay:1.6s}
+.smoke.s3{animation-delay:3.2s}
+@keyframes rise{0%{transform:translateY(0) scale(.6);opacity:0}15%{opacity:.7}100%{transform:translateY(-70px) translateX(12px) scale(1.4);opacity:0}}
+.rice{animation:sway 4s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 100%}
+.rice.r2{animation-delay:-.8s}
+.rice.r3{animation-delay:-1.6s}
+.rice.r4{animation-delay:-2.4s}
+.rice.r5{animation-delay:-3.2s}
+@keyframes sway{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+.wave{animation:waves 9s linear infinite}
+.wave.w2{animation-duration:14s;animation-direction:reverse;opacity:.5}
+@keyframes waves{from{transform:translateX(0)}to{transform:translateX(-240px)}}
+.raft{animation:bob 4.5s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 50%}
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-5px) rotate(1deg)}}
+.bird{animation:fly 26s linear infinite;opacity:.8}
+.bird.b2{animation-delay:-9s}
+@keyframes fly{from{transform:translateX(-120px) translateY(0)}50%{transform:translateX(700px) translateY(-25px)}to{transform:translateX(1560px) translateY(0)}}
+.sun-glow{animation:glow 6s ease-in-out infinite}
+@keyframes glow{0%,100%{opacity:.35}50%{opacity:.7}}
+.walker{animation:walk 30s linear infinite}
+@keyframes walk{from{transform:translateX(-80px)}to{transform:translateX(760px)}}
+.walker .leg{animation:step .6s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:50% 0}
+.walker .leg.b{animation-delay:-.3s}
+@keyframes step{from{transform:rotate(-18deg)}to{transform:rotate(18deg)}}
+@media (prefers-reduced-motion:reduce){
+  .cloud,.lantern,.smoke,.rice,.wave,.raft,.bird,.sun-glow,.walker,.walker .leg,.stamp,.marquee-track,.pulse,.steam,.route-walker{animation:none!important}
+}
+
+/* ---------- 跑馬燈 ---------- */
+.marquee{
+  background:var(--brick-deep);color:var(--gold-soft);
+  overflow:hidden;white-space:nowrap;padding:.7rem 0;
+  font-family:var(--serif);font-weight:700;font-size:1.05rem;letter-spacing:.1em;
+  border-top:4px solid var(--gold);border-bottom:4px solid var(--gold);
+}
+.marquee-track{display:inline-block;animation:marquee 32s linear infinite}
+.marquee-track span{display:inline-block;padding:0 1.6rem}
+.marquee-track span::before{content:"◆";color:var(--lantern);margin-right:1.6rem;font-size:.8em}
+@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ---------- 區塊 ---------- */
+section.block{padding:4.5rem 0}
+.section-head{text-align:center;margin-bottom:2.4rem}
+.section-head .kicker{
+  display:inline-block;font-size:.8rem;letter-spacing:.2em;color:var(--brick);font-weight:700;
+  padding:.25rem .9rem;border:1px solid var(--brick);border-radius:999px;margin-bottom:.8rem;
+}
+.section-head h2{font-size:clamp(1.7rem,3.5vw,2.4rem);color:#1f3a3d}
+.section-head p{color:var(--ink-soft);max-width:680px;margin:.6rem auto 0}
+.tile-edge{ /* 屋瓦邊 */
+  height:14px;
+  background:radial-gradient(circle at 50% 0,var(--brick) 0 45%,transparent 48%) 0 0/26px 14px repeat-x;
+  opacity:.85;
+}
+.tile-edge.green{background-image:radial-gradient(circle at 50% 0,var(--green) 0 45%,transparent 48%)}
+.tile-edge.gold{background-image:radial-gradient(circle at 50% 0,var(--gold) 0 45%,transparent 48%)}
+
+/* ---------- 活動資訊 ---------- */
+.pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem;margin-bottom:2.6rem}
+.pillar{
+  background:var(--paper);border-radius:var(--radius);padding:1.6rem 1.5rem;
+  box-shadow:var(--shadow);border-top:5px solid var(--brick);
+  position:relative;overflow:hidden;
+}
+.pillar:nth-child(2){border-top-color:var(--green)}
+.pillar:nth-child(3){border-top-color:var(--gold)}
+.pillar .icon{width:64px;height:64px;margin-bottom:.9rem}
+.pillar h3{font-size:1.35rem;color:#1f3a3d;margin-bottom:.4rem}
+.pillar p{margin:0;color:var(--ink-soft);font-size:.95rem}
+.steam{animation:steamUp 3s ease-out infinite;opacity:0;transform-box:fill-box;transform-origin:50% 100%}
+.steam.t2{animation-delay:1s}.steam.t3{animation-delay:2s}
+@keyframes steamUp{0%{opacity:0;transform:translateY(0)}30%{opacity:.8}100%{opacity:0;transform:translateY(-16px)}}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1.1rem}
+.info-card{
+  background:var(--rice);border-radius:14px;padding:1.2rem 1.3rem;
+  border:1px solid var(--line);display:flex;gap:.9rem;align-items:flex-start;
+}
+.info-card .ic{
+  flex:none;width:44px;height:44px;border-radius:12px;background:#fff;
+  display:grid;place-items:center;color:var(--brick);box-shadow:0 3px 8px rgba(74,43,26,.1);
+}
+.info-card .ic svg{width:24px;height:24px}
+.info-card h4{font-size:1.02rem;color:var(--brick-deep);margin-bottom:.2rem}
+.info-card p{margin:0;font-size:.94rem;color:var(--ink)}
+.info-card p + p{margin-top:.15rem}
+.info-card .muted{color:var(--ink-soft);font-size:.85rem}
+@media (max-width:860px){.pillars{grid-template-columns:1fr}}
+
+/* ---------- 行程 ---------- */
+.itinerary-section{background:linear-gradient(180deg,var(--rice),#fff 30%,var(--rice))}
+.day-tabs{display:flex;justify-content:center;gap:.6rem;margin-bottom:2rem;flex-wrap:wrap}
+.day-tab{
+  border:2px solid var(--brick);background:#fff;color:var(--brick);
+  padding:.6rem 1.4rem;border-radius:999px;font-weight:700;cursor:pointer;font-family:var(--serif);font-size:1rem;
+  transition:all .2s;
+}
+.day-tab[aria-selected="true"]{background:var(--brick);color:#fff}
+.day-panel{display:none;animation:fadeIn .4s}
+.day-panel.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.day-title{
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem 1rem;margin-bottom:.4rem;
+}
+.day-title h3{font-size:1.5rem;color:#1f3a3d}
+.day-title .sub{font-family:var(--serif);color:var(--brick);font-weight:700}
+.day-theme{color:var(--ink-soft);margin:0 0 1.4rem}
+.tags{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.6rem}
+.tag{font-size:.8rem;background:#fff;border:1px solid var(--line);border-radius:999px;padding:.2rem .7rem;color:var(--green-deep);font-weight:500}
+.timeline{position:relative;padding-left:1.6rem;margin:0;list-style:none}
+.timeline::before{content:"";position:absolute;left:7px;top:8px;bottom:8px;width:2px;background:repeating-linear-gradient(var(--brick) 0 8px,transparent 8px 14px)}
+.tl-item{position:relative;padding:0 0 1.4rem 1rem}
+.tl-item::before{
+  content:"";position:absolute;left:-1.6rem;top:.45rem;width:16px;height:16px;border-radius:50%;
+  background:var(--gold);border:3px solid #fff;box-shadow:0 0 0 2px var(--brick);
+}
+.tl-item.meal::before{background:var(--lantern)}
+.tl-item.move::before{background:#fff;box-shadow:0 0 0 2px var(--ink-soft)}
+.tl-item time{font-family:var(--serif);font-weight:700;color:var(--brick-deep);font-size:.95rem;letter-spacing:.03em}
+.tl-item h4{font-size:1.12rem;color:var(--ink);margin:.1rem 0 .2rem}
+.tl-item p{margin:0;color:var(--ink-soft);font-size:.93rem}
+.tl-item .note{display:inline-block;margin-top:.3rem;font-size:.8rem;color:var(--green-deep);background:var(--green-soft);padding:.1rem .6rem;border-radius:999px}
+.day-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:2.2rem;align-items:start}
+@media (max-width:900px){.day-grid{grid-template-columns:1fr}}
+.spot-cards{display:grid;gap:1rem}
+.spot{
+  background:#fff;border-radius:14px;padding:1.1rem 1.2rem;border:1px solid var(--line);
+  box-shadow:0 6px 16px rgba(74,43,26,.06);
+}
+.spot h4{font-size:1.05rem;color:var(--brick-deep);margin-bottom:.3rem;display:flex;gap:.5rem;align-items:center}
+.spot h4 svg{width:22px;height:22px;flex:none}
+.spot p{margin:0;font-size:.9rem;color:var(--ink-soft)}
+.route{
+  background:#fff;border-radius:14px;border:1px dashed var(--brick);padding:1rem 1rem .6rem;margin-top:1rem;overflow-x:auto;
+}
+.route h4{font-size:1rem;color:var(--brick-deep);margin-bottom:.2rem}
+.route p{font-size:.82rem;color:var(--ink-soft);margin:0 0 .4rem}
+.route svg{min-width:720px;width:100%;height:auto}
+.route-walker{offset-rotate:0deg}
+.route .node{font-size:12px;fill:var(--ink);font-family:var(--sans);font-weight:500}
+
+/* ---------- 名額 ---------- */
+.quota-section{background:#fff}
+.quota-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2rem}
+.quota-card{
+  border-radius:var(--radius);padding:1.4rem 1.3rem 1.2rem;
+  background:var(--paper);border:1px solid var(--line);box-shadow:var(--shadow);
+  position:relative;overflow:hidden;
+}
+.quota-card::after{
+  content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;
+  background:var(--q-color,var(--brick));opacity:.12;
+}
+.quota-card .q-name{font-family:var(--serif);font-weight:700;font-size:1.15rem;color:#1f3a3d}
+.quota-card .q-num{display:flex;align-items:baseline;gap:.35rem;margin:.5rem 0 .3rem}
+.quota-card .q-num b{font-family:var(--serif);font-size:2.4rem;color:var(--q-color,var(--brick));line-height:1}
+.quota-card .q-num span{color:var(--ink-soft);font-size:.9rem}
+.bar{height:10px;border-radius:999px;background:var(--rice);overflow:hidden;border:1px solid var(--line)}
+.bar i{display:block;height:100%;background:var(--q-color,var(--brick));width:0;transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.q-foot{display:flex;justify-content:space-between;font-size:.8rem;color:var(--ink-soft);margin-top:.4rem}
+.q-full{position:absolute;inset:0;display:none;place-items:center;background:rgba(255,253,248,.82)}
+.q-full span{
+  font-family:var(--serif);font-weight:900;color:var(--vermilion);font-size:1.5rem;
+  border:3px solid var(--vermilion);padding:.2rem 1rem;border-radius:8px;transform:rotate(-8deg);letter-spacing:.2em;
+}
+.quota-card.is-full .q-full{display:grid}
+.live{display:flex;justify-content:center;align-items:center;gap:.5rem;margin-top:1.4rem;font-size:.85rem;color:var(--ink-soft)}
+.pulse{width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 1.6s ease-in-out infinite}
+.pulse.off{background:var(--gold);animation:none}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(62,124,89,.5)}70%{box-shadow:0 0 0 8px rgba(62,124,89,0)}}
+@media (max-width:960px){.quota-grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.quota-grid{grid-template-columns:1fr}}
+
+/* ---------- 報名表單 ---------- */
+.form-section{background:linear-gradient(180deg,var(--rice),var(--cream))}
+.form-card{
+  background:var(--paper);border-radius:24px;box-shadow:var(--shadow);
+  padding:2.4rem;max-width:860px;margin:0 auto;border:1px solid var(--line);
+  position:relative;
+}
+.form-card::before{ /* 廟宇金線 */
+  content:"";position:absolute;inset:10px;border:1px solid var(--gold-soft);border-radius:18px;pointer-events:none;
+}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.1rem 1.4rem}
+.field{display:flex;flex-direction:column;gap:.35rem}
+.field.full{grid-column:1/-1}
+.field label{font-weight:700;font-size:.93rem;color:var(--ink)}
+.field label .req{color:var(--vermilion);margin-left:.2rem}
+.field input,.field select{
+  font:inherit;font-size:1rem;padding:.7rem .9rem;border-radius:12px;border:1.5px solid var(--line);
+  background:#fff;color:var(--ink);transition:border .2s,box-shadow .2s;width:100%;
+}
+.field input:focus,.field select:focus{outline:none;border-color:var(--brick);box-shadow:0 0 0 4px rgba(180,67,47,.14)}
+.field input:invalid:not(:placeholder-shown){border-color:#d98b7c}
+.field .hint{font-size:.78rem;color:var(--ink-soft)}
+.field .err{font-size:.8rem;color:var(--vermilion);display:none}
+.field.invalid .err{display:block}
+.field.invalid input,.field.invalid select{border-color:var(--vermilion)}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23b4432f' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .9rem center;padding-right:2.4rem}
+.insurance{
+  grid-column:1/-1;margin:.4rem 0;
+  border:2px dashed var(--brick);border-radius:16px;padding:1.3rem 1.3rem 1.1rem;
+  background:#fff8ee;position:relative;
+}
+.insurance legend{
+  padding:.2rem .8rem;background:var(--brick);color:#fff;border-radius:999px;font-weight:700;font-size:.85rem;
+  display:inline-flex;align-items:center;gap:.4rem;
+}
+.insurance legend svg{width:16px;height:16px}
+.insurance .ins-note{font-size:.83rem;color:var(--ink-soft);margin:.1rem 0 .9rem}
+.insurance .form-grid{gap:1rem 1.4rem}
+.radio-group{display:flex;gap:.8rem;flex-wrap:wrap}
+.radio-group label{
+  flex:1;display:flex;align-items:center;gap:.6rem;cursor:pointer;
+  border:1.5px solid var(--line);border-radius:12px;padding:.7rem .9rem;background:#fff;font-weight:500;transition:all .2s;
+}
+.radio-group label:hover{border-color:var(--brick)}
+.radio-group input{accent-color:var(--brick);width:18px;height:18px;margin:0}
+.radio-group label:has(input:checked){border-color:var(--brick);background:#fdf1ec;box-shadow:0 0 0 3px rgba(180,67,47,.12)}
+.consent{display:flex;gap:.6rem;align-items:flex-start;font-size:.9rem;color:var(--ink-soft);grid-column:1/-1}
+.consent input{accent-color:var(--brick);width:18px;height:18px;margin-top:.2rem;flex:none}
+.form-actions{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-top:.6rem}
+.form-actions .btn{padding:.85rem 2rem;font-size:1.05rem}
+.form-msg{grid-column:1/-1;display:none;padding:.8rem 1rem;border-radius:12px;font-size:.92rem}
+.form-msg.error{display:block;background:#fdecea;color:#8f2416;border:1px solid #f1b8ae}
+@media (max-width:640px){
+  .form-card{padding:1.6rem 1.2rem}
+  .form-grid{grid-template-columns:1fr}
+  .insurance .form-grid{grid-template-columns:1fr}
+}
+
+/* ---------- 頁尾 ---------- */
+.site-footer{
+  background:#24312f;color:#d8d2c3;padding:3rem 0 2rem;position:relative;overflow:hidden;
+}
+.site-footer::before{
+  content:"";position:absolute;inset:0;opacity:.07;pointer-events:none;
+  background-image:linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px);
+  background-size:100% 22px,66px 22px;
+}
+.footer-grid{position:relative;display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:2rem}
+.site-footer h4{font-size:1.05rem;color:var(--gold-soft);margin-bottom:.7rem}
+.site-footer p{margin:.15rem 0;font-size:.93rem}
+.site-footer a{color:#fff;text-decoration:none;border-bottom:1px dotted rgba(255,255,255,.4)}
+.site-footer .copy{position:relative;margin-top:2rem;padding-top:1.2rem;border-top:1px solid rgba(255,255,255,.12);font-size:.8rem;color:#a9a396;text-align:center}
+@media (max-width:820px){.footer-grid{grid-template-columns:1fr}}
+
+/* ---------- 成功視窗 ---------- */
+.modal{position:fixed;inset:0;z-index:100;display:none;place-items:center;background:rgba(43,42,40,.55);padding:1rem}
+.modal.open{display:grid}
+.modal-card{
+  background:var(--paper);border-radius:22px;padding:2rem;max-width:520px;width:100%;
+  box-shadow:0 30px 60px rgba(0,0,0,.35);text-align:center;animation:fadeIn .3s;
+  border-top:8px solid var(--brick);
+}
+.modal-card .seal{
+  width:84px;height:84px;margin:0 auto 1rem;border-radius:50%;
+  background:var(--brick);display:grid;place-items:center;color:#fff;font-family:var(--serif);font-weight:900;font-size:1.3rem;
+  border:3px double #fff;box-shadow:0 0 0 4px var(--brick);letter-spacing:.1em;
+}
+.modal-card h3{font-size:1.5rem;color:#1f3a3d;margin-bottom:.5rem}
+.modal-card p{color:var(--ink-soft);margin:.3rem 0}
+.modal-card .summary{
+  text-align:left;background:var(--rice);border-radius:12px;padding:.9rem 1.1rem;margin:1rem 0;font-size:.92rem;
+}
+.modal-card .summary div{display:flex;justify-content:space-between;gap:1rem;padding:.15rem 0;border-bottom:1px dashed var(--line)}
+.modal-card .summary div:last-child{border:none}
+.modal-card .summary span{color:var(--ink-soft)}
+.toTop{
+  position:fixed;right:1.2rem;bottom:1.2rem;z-index:40;width:46px;height:46px;border-radius:50%;
+  background:var(--brick);color:#fff;border:none;cursor:pointer;box-shadow:0 8px 18px rgba(139,47,34,.4);
+  display:grid;place-items:center;opacity:0;pointer-events:none;transition:opacity .3s;
+}
+.toTop.show{opacity:1;pointer-events:auto}
+.toTop svg{width:20px;height:20px}
+</style>
+</head>
+<body>
+
+<!-- ================= 頁首 ================= -->
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="#top">
+      <div class="brand-mark">360°</div>
+      <div class="brand-text">
+        <small>奇美醫院教學部</small>
+        <strong>醫學人生<span class="brand-sub">｜走進臺南，走進生活</span></strong>
+      </div>
+    </a>
+    <nav class="nav" aria-label="主選單">
+      <a href="#info">活動資訊</a>
+      <a href="#itinerary">兩日行程</a>
+      <a href="#quota">報名名額</a>
+      <a href="#register">線上報名</a>
+    </nav>
+    <div class="header-actions">
+      <a class="btn btn-gold btn-download" href="assets/itinerary.pdf" download="360°醫學人生｜走進臺南，走進生活行程.pdf" title="下載行程 PDF">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+        <span class="btn-label-long">下載行程</span><span class="btn-label-short">行程</span>
+      </a>
+      <a class="btn btn-primary btn-register" href="#register">立即報名</a>
+    </div>
+  </div>
+</header>
+
+<!-- ================= Hero ================= -->
+<section class="hero" id="top">
+  <div class="container hero-inner">
+    <div>
+      <span class="eyebrow">奇美醫院教學部 × 島內散步 Walk in Taiwan</span>
+      <h1><span class="deg">360°</span>醫學人生</h1>
+      <h2>走進臺南，走進生活</h2>
+      <p class="tagline">臺南，<em>一座讓人更懂生活的城市</em>。走讀府城街巷、市場、廟宇與聚落，從飲食、信仰、文化與土地認識民眾的生活樣貌，從臺南的日常，拓展照顧的視野。</p>
+      <div class="sessions" aria-label="活動梯次">
+        <div class="chip chip-1"><small>第一梯次</small><span>10/17（六）–10/18（日）</span></div>
+        <div class="chip chip-2"><small>第二梯次</small><span>11/21（六）–11/22（日）</span></div>
+        <div class="chip chip-3"><small>第三梯次</small><span>12/5（六）–12/6（日）</span></div>
+        <div class="chip chip-days"><span>民國 115 年｜每梯次 2 日</span></div>
+      </div>
+      <p class="audience">參加對象｜<b>西醫UGY</b>、<b>西醫PGY</b>、<b>醫事職類PGY</b> 及 <b>臨床教師</b></p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#register">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
+          填寫報名表
+        </a>
+        <a class="btn btn-outline" href="assets/itinerary.pdf" download="360°醫學人生｜走進臺南，走進生活行程.pdf">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+          下載行程 PDF
+        </a>
+      </div>
+    </div>
+    <div class="poster-frame">
+      <img src="assets/poster.jpg" alt="360°醫學人生｜走進臺南，走進生活 活動海報：菁寮老街、四草綠色隧道、安平老街、府城街巷、大崎聚落" loading="eager">
+      <div class="stamp">報名<br>開放中</div>
+    </div>
+  </div>
+
+  <!-- 動態場景：廟宇燈籠、香火、菁寮老街、稻田、四草綠色隧道竹筏 -->
+  <div class="scene" aria-hidden="true">
+    <svg viewBox="0 0 1440 430" preserveAspectRatio="xMidYMax slice">
+      <defs>
+        <linearGradient id="waterG" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#7fb0c1"/><stop offset="1" stop-color="#3f7d86"/>
+        </linearGradient>
+        <linearGradient id="roofG" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#d1503b"/><stop offset="1" stop-color="#9a3325"/>
+        </linearGradient>
+        <linearGradient id="wallG" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#d98a6b"/><stop offset="1" stop-color="#b96a4e"/>
+        </linearGradient>
+        <pattern id="brickP" width="22" height="12" patternUnits="userSpaceOnUse">
+          <rect width="22" height="12" fill="#c8735a"/>
+          <rect x="0" y="0" width="10" height="5" fill="#b86049"/>
+          <rect x="11" y="6" width="10" height="5" fill="#b86049"/>
+        </pattern>
+      </defs>
+
+      <!-- 太陽 -->
+      <circle class="sun-glow" cx="1180" cy="90" r="64" fill="#f6dfa0"/>
+      <circle cx="1180" cy="90" r="34" fill="#f3c65f"/>
+
+      <!-- 雲 -->
+      <g class="cloud c1" fill="#fff" opacity=".85">
+        <ellipse cx="180" cy="80" rx="70" ry="22"/><ellipse cx="220" cy="66" rx="45" ry="26"/><ellipse cx="140" cy="70" rx="40" ry="20"/>
+      </g>
+      <g class="cloud c2" fill="#fff" opacity=".8">
+        <ellipse cx="640" cy="60" rx="80" ry="20"/><ellipse cx="690" cy="48" rx="50" ry="26"/><ellipse cx="600" cy="52" rx="42" ry="18"/>
+      </g>
+      <g class="cloud c3" fill="#fff" opacity=".75">
+        <ellipse cx="1000" cy="120" rx="60" ry="16"/><ellipse cx="1030" cy="108" rx="40" ry="20"/>
+      </g>
+
+      <!-- 飛鳥 -->
+      <g class="bird b1" fill="none" stroke="#5f5a53" stroke-width="2" stroke-linecap="round">
+        <path d="M0 110 q8 -8 16 0 q8 -8 16 0"/><path d="M40 98 q6 -6 12 0 q6 -6 12 0"/>
+      </g>
+      <g class="bird b2" fill="none" stroke="#5f5a53" stroke-width="2" stroke-linecap="round">
+        <path d="M0 150 q7 -7 14 0 q7 -7 14 0"/>
+      </g>
+
+      <!-- 遠景：紅樹林剪影 (右) -->
+      <g fill="#8fb39a" opacity=".55">
+        <ellipse cx="1240" cy="240" rx="90" ry="46"/><ellipse cx="1330" cy="225" rx="110" ry="58"/><ellipse cx="1420" cy="245" rx="80" ry="44"/>
+      </g>
+
+      <!-- 菁寮老街 紅磚街屋 (左) -->
+      <g id="street">
+        <!-- 街屋 1 -->
+        <g transform="translate(60,0)">
+          <rect x="0" y="238" width="120" height="102" fill="url(#brickP)"/>
+          <polygon points="-8,240 60,206 128,240" fill="#6e3327"/>
+          <rect x="-8" y="236" width="136" height="6" fill="#4a2119"/>
+          <path d="M20 340 v-52 a18 18 0 0 1 36 0 v52z" fill="#3c1c14"/>
+          <rect x="74" y="262" width="30" height="26" fill="#f6e9cf" stroke="#4a2119" stroke-width="3"/>
+          <rect x="100" y="250" width="16" height="70" rx="2" fill="#f3e2b8" stroke="#8a2f22" stroke-width="2"/>
+          <text x="108" y="258" font-size="11" font-weight="700" fill="#8a2f22" writing-mode="tb" style="font-family:'Noto Serif TC',serif">菁寮老街</text>
+        </g>
+        <!-- 街屋 2 -->
+        <g transform="translate(190,0)">
+          <rect x="0" y="228" width="130" height="112" fill="#d8a482"/>
+          <rect x="0" y="228" width="130" height="10" fill="#8a2f22"/>
+          <polygon points="-8,230 65,198 138,230" fill="#7a3b2c"/>
+          <rect x="-10" y="226" width="150" height="6" fill="#4a2119"/>
+          <rect x="16" y="252" width="26" height="30" fill="#f6e9cf" stroke="#4a2119" stroke-width="3"/>
+          <rect x="88" y="252" width="26" height="30" fill="#f6e9cf" stroke="#4a2119" stroke-width="3"/>
+          <path d="M48 340 v-54 a17 17 0 0 1 34 0 v54z" fill="#3c1c14"/>
+          <rect x="34" y="304" width="62" height="6" fill="#4a2119"/>
+        </g>
+        <!-- 街屋 3 -->
+        <g transform="translate(330,0)">
+          <rect x="0" y="244" width="110" height="96" fill="url(#brickP)"/>
+          <polygon points="-8,246 55,214 118,246" fill="#6e3327"/>
+          <rect x="-8" y="242" width="126" height="6" fill="#4a2119"/>
+          <rect x="14" y="268" width="26" height="26" fill="#f6e9cf" stroke="#4a2119" stroke-width="3"/>
+          <path d="M60 340 v-48 a16 16 0 0 1 32 0 v48z" fill="#3c1c14"/>
+          <rect x="-4" y="252" width="16" height="66" rx="2" fill="#f3e2b8" stroke="#8a2f22" stroke-width="2"/>
+          <text x="4" y="260" font-size="11" font-weight="700" fill="#8a2f22" writing-mode="tb" style="font-family:'Noto Serif TC',serif">安平老街</text>
+        </g>
+        <!-- 市場攤棚 -->
+        <g transform="translate(455,0)">
+          <rect x="6" y="300" width="4" height="40" fill="#4a2119"/><rect x="92" y="300" width="4" height="40" fill="#4a2119"/>
+          <path d="M0 300 h102 l-8 -22 h-86z" fill="#c8352b"/>
+          <path d="M0 300 h102" stroke="#d9a441" stroke-width="4"/>
+          <rect x="14" y="312" width="74" height="14" rx="2" fill="#d9a441"/>
+          <circle cx="30" cy="312" r="7" fill="#e4572e"/><circle cx="50" cy="311" r="7" fill="#f3c65f"/><circle cx="70" cy="312" r="7" fill="#7fb04f"/>
+        </g>
+      </g>
+
+      <!-- 走路的人 (沿老街散步) -->
+      <g class="walker">
+        <g transform="translate(120,290)" fill="#274a4d">
+          <circle cx="0" cy="0" r="8"/>
+          <rect x="-7" y="8" width="14" height="24" rx="4"/>
+          <rect x="-11" y="10" width="6" height="14" rx="3" fill="#3e7c59"/>
+          <g class="leg a"><rect x="-6" y="32" width="5" height="18" rx="2"/></g>
+          <g class="leg b"><rect x="1" y="32" width="5" height="18" rx="2"/></g>
+        </g>
+      </g>
+
+      <!-- 府城廟宇 (中右) -->
+      <g id="temple">
+        <rect x="760" y="262" width="300" height="78" fill="#a13a2c"/>
+        <rect x="760" y="262" width="300" height="8" fill="#d9a441"/>
+        <rect x="780" y="196" width="260" height="66" fill="url(#wallG)"/>
+        <rect x="790" y="196" width="10" height="66" fill="#7a2a1e"/>
+        <rect x="860" y="196" width="10" height="66" fill="#7a2a1e"/>
+        <rect x="950" y="196" width="10" height="66" fill="#7a2a1e"/>
+        <rect x="1020" y="196" width="10" height="66" fill="#7a2a1e"/>
+        <rect x="886" y="212" width="48" height="50" fill="#4a1a12"/>
+        <rect x="892" y="216" width="16" height="46" fill="#c9553f"/><rect x="912" y="216" width="16" height="46" fill="#c9553f"/>
+        <circle cx="900" cy="238" r="3" fill="#d9a441"/><circle cx="920" cy="238" r="3" fill="#d9a441"/>
+        <rect x="812" y="216" width="34" height="26" fill="#f6e9cf" stroke="#7a2a1e" stroke-width="3"/>
+        <rect x="974" y="216" width="34" height="26" fill="#f6e9cf" stroke="#7a2a1e" stroke-width="3"/>
+        <!-- 下層屋簷 燕尾脊 -->
+        <path d="M742 200 C 800 180, 1020 180, 1078 200 L 1062 176 C 1000 158, 820 158, 758 176 Z" fill="url(#roofG)"/>
+        <path d="M742 200 C 736 186, 738 172, 724 158" fill="none" stroke="#9a3325" stroke-width="6" stroke-linecap="round"/>
+        <path d="M1078 200 C 1084 186, 1082 172, 1096 158" fill="none" stroke="#9a3325" stroke-width="6" stroke-linecap="round"/>
+        <!-- 上層屋簷 -->
+        <rect x="836" y="150" width="148" height="28" fill="#c9553f"/>
+        <path d="M812 156 C 860 138, 960 138, 1008 156 L 996 134 C 950 120, 870 120, 824 134 Z" fill="url(#roofG)"/>
+        <path d="M812 156 C 808 144, 810 136, 798 124" fill="none" stroke="#9a3325" stroke-width="5" stroke-linecap="round"/>
+        <path d="M1008 156 C 1012 144, 1010 136, 1022 124" fill="none" stroke="#9a3325" stroke-width="5" stroke-linecap="round"/>
+        <!-- 脊飾 雙龍搶珠 -->
+        <circle cx="910" cy="122" r="7" fill="#d9a441"/>
+        <path d="M860 130 q10 -14 24 -6" fill="none" stroke="#d9a441" stroke-width="4" stroke-linecap="round"/>
+        <path d="M960 130 q-10 -14 -24 -6" fill="none" stroke="#d9a441" stroke-width="4" stroke-linecap="round"/>
+        <!-- 匾額 -->
+        <rect x="878" y="180" width="64" height="16" rx="2" fill="#2b2a28"/>
+        <text x="910" y="192" text-anchor="middle" font-size="11" fill="#d9a441" font-weight="700" style="font-family:'Noto Serif TC',serif">府城古廟</text>
+        <!-- 燈籠 -->
+        <g class="lantern l1">
+          <line x1="812" y1="200" x2="812" y2="214" stroke="#4a1a12" stroke-width="2"/>
+          <rect x="802" y="212" width="20" height="5" rx="1" fill="#d9a441"/>
+          <ellipse cx="812" cy="230" rx="13" ry="15" fill="#e4572e"/>
+          <path d="M803 224 h18 M803 236 h18" stroke="#c8352b" stroke-width="1"/>
+          <rect x="802" y="243" width="20" height="5" rx="1" fill="#d9a441"/>
+          <line x1="812" y1="248" x2="812" y2="258" stroke="#d9a441" stroke-width="2"/>
+        </g>
+        <g class="lantern l2">
+          <line x1="1008" y1="200" x2="1008" y2="214" stroke="#4a1a12" stroke-width="2"/>
+          <rect x="998" y="212" width="20" height="5" rx="1" fill="#d9a441"/>
+          <ellipse cx="1008" cy="230" rx="13" ry="15" fill="#e4572e"/>
+          <path d="M999 224 h18 M999 236 h18" stroke="#c8352b" stroke-width="1"/>
+          <rect x="998" y="243" width="20" height="5" rx="1" fill="#d9a441"/>
+          <line x1="1008" y1="248" x2="1008" y2="258" stroke="#d9a441" stroke-width="2"/>
+        </g>
+        <g class="lantern l3">
+          <line x1="910" y1="156" x2="910" y2="166" stroke="#4a1a12" stroke-width="2"/>
+          <rect x="902" y="164" width="16" height="4" rx="1" fill="#d9a441"/>
+          <ellipse cx="910" cy="176" rx="10" ry="11" fill="#e4572e"/>
+          <rect x="902" y="185" width="16" height="4" rx="1" fill="#d9a441"/>
+        </g>
+        <!-- 香爐與香煙 -->
+        <rect x="892" y="286" width="36" height="22" rx="4" fill="#5b5b5b"/>
+        <rect x="886" y="282" width="48" height="8" rx="3" fill="#7a7a7a"/>
+        <rect x="896" y="308" width="6" height="8" fill="#3a3a3a"/><rect x="918" y="308" width="6" height="8" fill="#3a3a3a"/>
+        <line x1="904" y1="284" x2="904" y2="266" stroke="#8a5a2a" stroke-width="2"/>
+        <line x1="910" y1="284" x2="910" y2="262" stroke="#8a5a2a" stroke-width="2"/>
+        <line x1="916" y1="284" x2="916" y2="266" stroke="#8a5a2a" stroke-width="2"/>
+        <circle cx="904" cy="266" r="2" fill="#e4572e"/><circle cx="910" cy="262" r="2" fill="#e4572e"/><circle cx="916" cy="266" r="2" fill="#e4572e"/>
+        <g fill="#fff">
+          <circle class="smoke s1" cx="910" cy="258" r="8"/>
+          <circle class="smoke s2" cx="906" cy="258" r="6"/>
+          <circle class="smoke s3" cx="914" cy="258" r="7"/>
+        </g>
+      </g>
+
+      <!-- 地面 -->
+      <rect x="0" y="338" width="1440" height="18" fill="#c9a27a"/>
+      <rect x="0" y="338" width="1440" height="4" fill="#b28a63"/>
+
+      <!-- 前景：菁寮稻田 (左) -->
+      <g id="rice" fill="none" stroke="#6f8f3a" stroke-width="4" stroke-linecap="round">
+        <g class="rice r1"><path d="M30 356 C 34 320, 26 300, 40 262"/><path d="M40 262 l-8 6 M40 262 l8 4 M36 276 l-9 6 M37 276 l9 3 M33 290 l-9 5 M34 290 l9 3" stroke="#d9a441" stroke-width="3"/></g>
+        <g class="rice r2"><path d="M70 356 C 74 318, 64 298, 78 256"/><path d="M78 256 l-8 6 M78 256 l8 4 M74 270 l-9 6 M75 270 l9 3 M71 284 l-9 5 M72 284 l9 3" stroke="#d9a441" stroke-width="3"/></g>
+        <g class="rice r3"><path d="M110 356 C 116 322, 104 302, 120 266"/><path d="M120 266 l-8 6 M120 266 l8 4 M116 280 l-9 6 M117 280 l9 3" stroke="#d9a441" stroke-width="3"/></g>
+        <g class="rice r4"><path d="M150 356 C 156 318, 144 300, 160 258"/><path d="M160 258 l-8 6 M160 258 l8 4 M156 272 l-9 6 M157 272 l9 3 M153 286 l-9 5 M154 286 l9 3" stroke="#d9a441" stroke-width="3"/></g>
+        <g class="rice r5"><path d="M190 356 C 194 324, 186 306, 198 272"/><path d="M198 272 l-8 6 M198 272 l8 4 M194 286 l-9 6 M195 286 l9 3" stroke="#d9a441" stroke-width="3"/></g>
+        <g class="rice r2"><path d="M230 356 C 236 320, 224 300, 240 262"/><path d="M240 262 l-8 6 M240 262 l8 4 M236 276 l-9 6 M237 276 l9 3 M233 290 l-9 5 M234 290 l9 3" stroke="#d9a441" stroke-width="3"/></g>
+        <g class="rice r4"><path d="M270 356 C 276 326, 266 308, 280 276"/><path d="M280 276 l-8 6 M280 276 l8 4 M276 290 l-9 6 M277 290 l9 3" stroke="#d9a441" stroke-width="3"/></g>
+      </g>
+
+      <!-- 紅龜粿 (左下角) -->
+      <g transform="translate(330,318)">
+        <ellipse cx="0" cy="24" rx="46" ry="12" fill="#b7894c"/>
+        <ellipse cx="0" cy="18" rx="44" ry="10" fill="#d9b06a"/>
+        <ellipse cx="-14" cy="10" rx="22" ry="12" fill="#e0405a"/>
+        <ellipse cx="14" cy="8" rx="22" ry="12" fill="#e64c67"/>
+        <path d="M-26 10 q12 -10 24 0 M2 8 q12 -10 24 0" fill="none" stroke="#f3a6b7" stroke-width="2"/>
+        <circle cx="-14" cy="6" r="4" fill="none" stroke="#f3a6b7" stroke-width="2"/><circle cx="14" cy="4" r="4" fill="none" stroke="#f3a6b7" stroke-width="2"/>
+      </g>
+
+      <!-- 四草綠色隧道：水面 -->
+      <rect x="0" y="356" width="1440" height="80" fill="url(#waterG)"/>
+      <g class="wave" fill="#fff" opacity=".35">
+        <path d="M0 366 q60 -8 120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 v10 h-1680z"/>
+      </g>
+      <g class="wave w2" fill="#fff" opacity=".2">
+        <path d="M0 384 q60 -6 120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 t120 0 v8 h-1680z"/>
+      </g>
+
+      <!-- 紅樹林 (右前景) -->
+      <g id="mangrove">
+        <g stroke="#5a3b26" stroke-width="5" fill="none" stroke-linecap="round">
+          <path d="M1210 356 C 1214 330, 1206 300, 1222 262"/>
+          <path d="M1222 300 l-22 56 M1222 300 l24 56 M1218 322 l-30 34"/>
+          <path d="M1320 356 C 1322 320, 1318 290, 1332 250"/>
+          <path d="M1332 292 l-24 64 M1332 292 l28 64 M1330 316 l-34 40 M1334 316 l36 40"/>
+          <path d="M1410 356 C 1414 326, 1408 300, 1420 268"/>
+          <path d="M1420 302 l-20 54 M1420 302 l22 54"/>
+        </g>
+        <g fill="#3e7c59">
+          <ellipse cx="1210" cy="250" rx="70" ry="34"/><ellipse cx="1260" cy="230" rx="60" ry="30" fill="#4d8f68"/>
+          <ellipse cx="1340" cy="232" rx="80" ry="40"/><ellipse cx="1400" cy="214" rx="66" ry="34" fill="#2c5a41"/>
+          <ellipse cx="1430" cy="256" rx="70" ry="34" fill="#4d8f68"/>
+          <ellipse cx="1180" cy="286" rx="46" ry="22" fill="#2c5a41"/>
+        </g>
+        <!-- 倒影 -->
+        <g fill="#2c5a41" opacity=".25">
+          <ellipse cx="1300" cy="380" rx="150" ry="14"/><ellipse cx="1420" cy="392" rx="90" ry="10"/>
+        </g>
+      </g>
+
+      <!-- 竹筏 (包船巡河) -->
+      <g class="raft">
+        <g transform="translate(600,352)">
+          <!-- 倒影 -->
+          <ellipse cx="70" cy="34" rx="70" ry="6" fill="#1f3a3d" opacity=".18"/>
+          <!-- 遮陽棚 -->
+          <rect x="30" y="-40" width="3" height="34" fill="#5a3b26"/><rect x="110" y="-40" width="3" height="34" fill="#5a3b26"/>
+          <path d="M22 -40 h100 l-6 -10 h-88z" fill="#3e7c59"/>
+          <!-- 人 -->
+          <g fill="#274a4d">
+            <circle cx="46" cy="-14" r="6"/><rect x="40" y="-8" width="12" height="14" rx="3" fill="#c8352b"/>
+            <circle cx="66" cy="-15" r="6"/><rect x="60" y="-9" width="12" height="15" rx="3" fill="#f3c65f"/>
+            <circle cx="86" cy="-14" r="6"/><rect x="80" y="-8" width="12" height="14" rx="3" fill="#6fa3b8"/>
+            <circle cx="104" cy="-15" r="6"/><rect x="98" y="-9" width="12" height="15" rx="3" fill="#dfe8cf"/>
+          </g>
+          <!-- 船夫與竹篙 -->
+          <circle cx="132" cy="-20" r="6" fill="#274a4d"/><rect x="126" y="-14" width="12" height="20" rx="3" fill="#5a3b26"/>
+          <path d="M136 -30 L 150 20" stroke="#8a5a2a" stroke-width="3" stroke-linecap="round"/>
+          <!-- 筏身 -->
+          <rect x="0" y="4" width="150" height="7" rx="3" fill="#a0783e"/>
+          <rect x="0" y="9" width="150" height="6" rx="3" fill="#7a5a2a"/>
+          <g stroke="#5a3b26" stroke-width="1"><line x1="20" y1="4" x2="20" y2="15"/><line x1="50" y1="4" x2="50" y2="15"/><line x1="80" y1="4" x2="80" y2="15"/><line x1="110" y1="4" x2="110" y2="15"/><line x1="140" y1="4" x2="140" y2="15"/></g>
+        </g>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<!-- ================= 跑馬燈 ================= -->
+<div class="marquee" aria-hidden="true">
+  <div class="marquee-track" id="marqueeTrack">
+    <span>走讀亮點</span><span>菁寮老街</span><span>手作紅龜粿</span><span>四草綠色隧道</span><span>安平老街</span><span>府城街巷</span><span>鴨母寮市場</span><span>大崎聚落</span><span>俗女餐桌</span><span>府城食府</span><span>從臺南的日常，拓展照顧的視野</span>
+  </div>
+</div>
+
+<!-- ================= 活動資訊 ================= -->
+<section class="block" id="info">
+  <div class="container">
+    <div class="section-head">
+      <span class="kicker">ABOUT</span>
+      <h2>從臺南的日常，拓展照顧的視野</h2>
+      <p>呼應本院「照顧臺南人一輩子」的核心價值，帶領學員走出醫院、走進臺南在地生活，從<strong>飲食文化、社區照護、自我覺察</strong>三面向，理解疾病如何發生於日常生活之中，培養全人照護視角與跨職類團隊互動能力。</p>
+    </div>
+
+    <div class="pillars">
+      <article class="pillar">
+        <svg class="icon" viewBox="0 0 64 64" aria-hidden="true">
+          <g class="steam t1" stroke="#b4432f" stroke-width="2.5" fill="none" stroke-linecap="round"><path d="M24 24 c-3 -4 3 -6 0 -10"/></g>
+          <g class="steam t2" stroke="#b4432f" stroke-width="2.5" fill="none" stroke-linecap="round"><path d="M32 22 c-3 -4 3 -6 0 -10"/></g>
+          <g class="steam t3" stroke="#b4432f" stroke-width="2.5" fill="none" stroke-linecap="round"><path d="M40 24 c-3 -4 3 -6 0 -10"/></g>
+          <path d="M8 30 h48 c0 14 -10 24 -24 24 s-24 -10 -24 -24z" fill="#f7efdd" stroke="#b4432f" stroke-width="3"/>
+          <path d="M14 30 c6 -6 30 -6 36 0" fill="none" stroke="#d9a441" stroke-width="3"/>
+          <path d="M20 36 q12 6 24 0" fill="none" stroke="#b4432f" stroke-width="2"/>
+          <rect x="22" y="54" width="20" height="4" rx="2" fill="#b4432f"/>
+        </svg>
+        <h3>飲食文化</h3>
+        <p>走讀街巷、市場與聚落，從在地飲食認識生活型態；由臺南飲食文化連結高血壓、高血糖、高血脂等慢性病之生活型態醫療。</p>
+      </article>
+      <article class="pillar">
+        <svg class="icon" viewBox="0 0 64 64" aria-hidden="true">
+          <path d="M12 36 c6 -8 14 -8 20 -2 l8 6 c3 2 1 6 -2 6 l-10 -1" fill="#f7efdd" stroke="#3e7c59" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M52 36 c-6 -8 -14 -8 -20 -2" fill="none" stroke="#3e7c59" stroke-width="3"/>
+          <path d="M8 44 l14 6 c6 2 12 2 18 0 l16 -8" fill="none" stroke="#3e7c59" stroke-width="3" stroke-linecap="round"/>
+          <path d="M32 14 c-4 -6 -12 -4 -12 3 c0 6 12 12 12 12 s12 -6 12 -12 c0 -7 -8 -9 -12 -3z" fill="#e4572e"/>
+        </svg>
+        <h3>社區照護</h3>
+        <p>連結生活情境與連續性照護；走進社區診所與社區藥局，理解連續性照護，培養全人照護與跨職類合作。</p>
+      </article>
+      <article class="pillar">
+        <svg class="icon" viewBox="0 0 64 64" aria-hidden="true">
+          <circle class="sun-glow" cx="32" cy="28" r="18" fill="#f1dfae"/>
+          <circle cx="32" cy="28" r="10" fill="#d9a441"/>
+          <g stroke="#d9a441" stroke-width="3" stroke-linecap="round"><path d="M32 6 v6 M32 44 v6 M10 28 h6 M48 28 h6 M16.5 12.5 l4 4 M43.5 43.5 l4 4 M16.5 43.5 l4 -4 M43.5 12.5 l-4 4"/></g>
+          <path d="M14 56 q18 -10 36 0" fill="none" stroke="#3e7c59" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <h3>自我覺察</h3>
+        <p>透過正念練習與 360° 醫學人生反思收斂，引導學員連結自身專業（Profession）、職涯（Career）、價值（Value）與使命（Mission）。</p>
+      </article>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-card">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+        <div>
+          <h4>活動日期（三梯次擇一）</h4>
+          <p>第一梯次｜115/10/17（六）–10/18（日）</p>
+          <p>第二梯次｜115/11/21（六）–11/22（日）</p>
+          <p>第三梯次｜115/12/5（六）–12/6（日）</p>
+        </div>
+      </div>
+      <div class="info-card">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+        <div>
+          <h4>集合時間</h4>
+          <p>第一天｜08:50–09:00</p>
+          <p>第二天｜09:20–09:30</p>
+          <p class="muted">請準時集合，逾時不候。</p>
+        </div>
+      </div>
+      <div class="info-card">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+        <div>
+          <h4>上車地點</h4>
+          <p>第一醫療大樓前方廣場</p>
+          <p class="muted">奇美醫院（永康）</p>
+        </div>
+      </div>
+      <div class="info-card">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></div>
+        <div>
+          <h4>參加對象與名額</h4>
+          <p>西醫UGY 8 人・西醫PGY 10 人</p>
+          <p>醫事職類PGY 9 人・臨床教師 8 人</p>
+          <p class="muted">額滿為止，名額即時顯示於報名表。</p>
+        </div>
+      </div>
+      <div class="info-card">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg></div>
+        <div>
+          <h4>承辦單位</h4>
+          <p>主辦｜奇美醫院教學部</p>
+          <p>執行｜島內散步 Walk in Taiwan</p>
+          <p class="muted">含旅行責任保險、午宴、包船與 DIY 體驗。</p>
+        </div>
+      </div>
+      <div class="info-card">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.8 19.8 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.8 19.8 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z"/></svg></div>
+        <div>
+          <h4>聯絡窗口</h4>
+          <p>林盟淦 教學行政管理員</p>
+          <p>06-281-2811 分機 57440</p>
+          <p><a href="mailto:910632@chimei.org.tw">910632@chimei.org.tw</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="tile-edge"></div>
+
+<!-- ================= 兩日行程 ================= -->
+<section class="block itinerary-section" id="itinerary">
+  <div class="container">
+    <div class="section-head">
+      <span class="kicker">ITINERARY</span>
+      <h2>兩日走讀行程</h2>
+      <p>第一日「走進臺南，看見生活」；第二日「從生活出發，重新理解照顧」。行程由島內散步規劃，導覽老師將視現場狀況保留部分路線的更動彈性。</p>
+    </div>
+
+    <div class="day-tabs" role="tablist">
+      <button class="day-tab" role="tab" aria-selected="true" aria-controls="day1" id="tab-day1">Day 1｜菁寮・四草・安平</button>
+      <button class="day-tab" role="tab" aria-selected="false" aria-controls="day2" id="tab-day2">Day 2｜府城老城・大崎聚落</button>
+    </div>
+
+    <!-- Day 1 -->
+    <div class="day-panel active" id="day1" role="tabpanel" aria-labelledby="tab-day1">
+      <div class="day-title">
+        <h3>Day 1｜台南後壁菁寮・安平</h3>
+        <span class="sub">平原的嗜甜日記</span>
+      </div>
+      <p class="day-theme">走進臺南，看見生活──走讀府城街巷、市場、廟宇與聚落，從飲食、信仰、文化與土地認識民眾的生活樣貌。</p>
+      <div class="tags">
+        <span class="tag">#走入台南的甜味宇宙</span><span class="tag">#追溯平原的產地秘密</span><span class="tag">#台灣最美隧道</span><span class="tag">#遊船包船體驗</span>
+      </div>
+      <div class="day-grid">
+        <ol class="timeline">
+          <li class="tl-item"><time>08:50 – 09:00</time><h4>集合</h4><p>第一醫療大樓前方廣場，準時上車。</p></li>
+          <li class="tl-item move"><time>09:00 – 10:00</time><h4>車程：台南永康 〜 菁寮</h4><p>跟著沒有盡頭的縱貫公路，穿越一畦畦的稻田。</p></li>
+          <li class="tl-item"><time>10:00 – 12:00</time><h4>菁寮老街百年聚落導覽 ＆ 手作傳統米食（手作紅龜粿）</h4><p>百年中藥行、家具店、鐘錶行與天主堂，街角的百年碾米廠與農人依舊守著平原的米與文化。親手製作紅龜粿，用充滿祈願的米食感受文化與生活的交織。</p><span class="note">碾米體驗・親手輾製的米可帶回家</span></li>
+          <li class="tl-item meal"><time>12:00 – 13:00</time><h4>午宴：俗女餐桌 Buffet</h4><p>由在地媽媽們用心烹調、在地食材入菜的 Buffet 午宴，從家常小炒到傳統客家風味，一口嚐出鄉土情懷。</p></li>
+          <li class="tl-item"><time>14:00 – 14:40</time><h4>四草綠色隧道巡河之旅（包船）</h4><p>搭乘竹筏駛入「台版亞馬遜」，穿越百年紅樹林交織的綠廊，在水面捕捉「天使之吻」倒影，近距離觀察招潮蟹、彈塗魚與水鳥。</p></li>
+          <li class="tl-item move"><time>14:40 – 15:00</time><h4>車程：〜 安平老街</h4></li>
+          <li class="tl-item"><time>15:00 – 16:00</time><h4>安平徒步導覽</h4><p>漫步全台第一條街道「安平老街（延平街）」，在巷弄間尋找守護家宅的劍獅，品嚐安平豆花、蝦餅與蚵捲，感受紅磚瓦牆間四百年的歲月。</p></li>
+          <li class="tl-item move"><time>16:00 – 17:00</time><h4>賦歸</h4></li>
+        </ol>
+        <div class="spot-cards">
+          <div class="spot">
+            <h4><svg viewBox="0 0 24 24" fill="none" stroke="#b4432f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>米鄉日常｜菁寮老街</h4>
+            <p>磚紅色與木質調交織的百年聚落，因米而繁盛。從產地到餐桌，感受台南人將食物轉化為祝福與文化象徵的生活智慧。</p>
+          </div>
+          <div class="spot">
+            <h4><svg viewBox="0 0 24 24" fill="none" stroke="#3e7c59" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18c3 0 3 2 6 2s3-2 6-2 3 2 6 2M4 14l2-8h12l2 8"/><path d="M12 6V3"/></svg>台版亞馬遜｜四草綠色隧道</h4>
+            <p>隱身於安平的夢幻水道，由百年紅樹林自然交疊而成，陽光穿透枝葉灑落碧綠水面，是探索府城生命水源的永續美學體驗。</p>
+          </div>
+          <div class="spot">
+            <h4><svg viewBox="0 0 24 24" fill="none" stroke="#d9a441" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V9l8-6 8 6v12"/><path d="M9 21v-5a3 3 0 016 0v5"/></svg>四百年時光｜安平老城區</h4>
+            <p>古蹟名勝與饕客朝聖地。文青咖啡館與百年中藥行改建的文創店，是老派日常與現代創意交織的縮影。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Day 2 -->
+    <div class="day-panel" id="day2" role="tabpanel" aria-labelledby="tab-day2">
+      <div class="day-title">
+        <h3>Day 2｜台南老城・官田大崎</h3>
+        <span class="sub">全臺首邑・老派府城的神級日常</span>
+      </div>
+      <p class="day-theme">從生活出發，重新理解照顧──由臺南飲食文化連結慢性病之生活型態醫療，走進社區理解連續性照護，最後以正念練習與 360° 醫學人生反思收斂。</p>
+      <div class="tags">
+        <span class="tag">#限量台南糕餅</span><span class="tag">#朝聖府城人生活</span><span class="tag">#市場美食大揭秘</span><span class="tag">#村落特色DIY</span>
+      </div>
+      <div class="day-grid">
+        <ol class="timeline">
+          <li class="tl-item"><time>09:20 – 09:30</time><h4>集合</h4><p>第一醫療大樓前方廣場，準時上車。</p></li>
+          <li class="tl-item"><time>09:30 – 11:00</time><h4>城市經典｜老派台南的神級日常 × 散步導覽</h4><p>赤崁樓旁的鎮北坊文化街區，藏著府城人日常才懂的祕密生活：百年廟宇、經典小吃、神明的個性派故事──真正的台南靈魂。</p><span class="note">含導覽點心每人一份</span></li>
+          <li class="tl-item move"><time>11:00 – 11:30</time><h4>車程：〜 府城食府</h4></li>
+          <li class="tl-item meal"><time>11:30 – 12:40</time><h4>午宴：府城食府 新仁店</h4><p>一座活生生的台南飲食文化博物館。翡翠蚵羹、魷魚螺肉蒜、台南擔仔麵與虱目魚料理，重現昔日酒家菜與阿舍菜的風華。</p></li>
+          <li class="tl-item move"><time>12:40 – 13:30</time><h4>車程：〜 大崎聚落</h4></li>
+          <li class="tl-item"><time>13:30 – 15:00</time><h4>大崎聚落散策 ＋ 村落特色 DIY 二擇一</h4><p>官田區大崎里的村落創藝基地，跳格子、彈弓、投時機，勾起童年回憶。DIY 二擇一：<strong>紅瓦綠蕨 DIY</strong> 或 <strong>百年古瓦杯墊 DIY</strong>。</p></li>
+          <li class="tl-item move"><time>15:30 – 16:30</time><h4>賦歸</h4></li>
+        </ol>
+        <div class="spot-cards">
+          <div class="spot">
+            <h4><svg viewBox="0 0 24 24" fill="none" stroke="#c8352b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7"/><path d="M5 10v11h14V10"/><path d="M10 21v-6h4v6"/></svg>百味台南｜鎮北坊散步導覽</h4>
+            <p>為什麼漂亮的老房子被砍了一半？為什麼清代古典花園「吳園」旁邊冒出日治時期建築？打開覺察力，成為「臺南散步學」資優生。</p>
+          </div>
+          <div class="spot">
+            <h4><svg viewBox="0 0 24 24" fill="none" stroke="#3e7c59" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c4-4 8-7 8-12a8 8 0 10-16 0c0 5 4 8 8 12z"/><path d="M12 6v8M8 10h8"/></svg>大崎聚落走讀｜古厝自由散策</h4>
+            <p>藝農團隊以「村落遊戲島」為概念改造村落廢墟，營造趣味、美學、療癒、探索的創意玩學聚落。夏季芒果樹會用香氣打招呼。</p>
+          </div>
+          <div class="route">
+            <h4>導覽參考路線（Day 2 上午）</h4>
+            <p>跟著散步的腳步，走過廟宇、市場與老餅舖。</p>
+            <svg viewBox="0 0 920 250" aria-label="導覽參考路線：開基靈祐宮、鴨母寮市場、大觀音亭興濟宮、新東亞旅程、開基玉皇宮、北忠街店家、三老爺宮、縣城隍廟、舊來發餅舖、開基天后祖廟">
+              <path id="routePath" d="M50 190 C 90 190, 110 90, 150 90 S 210 180, 250 180 S 310 85, 350 85 S 410 185, 450 185 S 500 95, 540 95 S 590 185, 630 185 S 680 90, 720 90 S 760 180, 800 180 S 830 95, 870 95" fill="none" stroke="#b4432f" stroke-width="3" stroke-dasharray="6 7" stroke-linecap="round"/>
+              <g fill="#fff" stroke="#b4432f" stroke-width="3">
+                <circle cx="50" cy="190" r="9"/><circle cx="150" cy="90" r="9"/><circle cx="250" cy="180" r="9"/><circle cx="350" cy="85" r="9"/><circle cx="450" cy="185" r="9"/>
+                <circle cx="540" cy="95" r="9"/><circle cx="630" cy="185" r="9"/><circle cx="720" cy="90" r="9"/><circle cx="800" cy="180" r="9"/><circle cx="870" cy="95" r="9"/>
+              </g>
+              <g class="node" text-anchor="middle">
+                <text x="50" y="218">開基靈祐宮</text>
+                <text x="150" y="70">鴨母寮市場</text>
+                <text x="250" y="208">大觀音亭興濟宮</text>
+                <text x="350" y="65">新東亞旅程</text>
+                <text x="450" y="213">開基玉皇宮</text>
+                <text x="540" y="75">北忠街店家</text>
+                <text x="630" y="213">三老爺宮</text>
+                <text x="720" y="70">縣城隍廟</text>
+                <text x="800" y="208">舊來發餅舖</text>
+                <text x="870" y="75">開基天后祖廟</text>
+              </g>
+              <g class="route-walker">
+                <circle r="13" fill="#d9a441" stroke="#fff" stroke-width="3"/>
+                <g fill="#2b2a28" transform="translate(0,-1)">
+                  <circle cx="0" cy="-5" r="2.6"/><rect x="-2.2" y="-2" width="4.4" height="7" rx="1.5"/><path d="M-2 5 l-2 4 M2 5 l2 4" stroke="#2b2a28" stroke-width="1.8" stroke-linecap="round"/>
+                </g>
+                <animateMotion dur="22s" repeatCount="indefinite" rotate="0"><mpath href="#routePath"/></animateMotion>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="tile-edge green"></div>
+
+<!-- ================= 名額 ================= -->
+<section class="block quota-section" id="quota">
+  <div class="container">
+    <div class="section-head">
+      <span class="kicker">QUOTA</span>
+      <h2>報名名額即時查詢</h2>
+      <p>各身分別採限額報名，額滿即關閉該身分之報名。</p>
+    </div>
+    <div class="quota-grid" id="quotaGrid"></div>
+    <div class="live"><span class="pulse" id="livePulse"></span><span id="liveText">名額資料載入中…</span></div>
+  </div>
+</section>
+
+<div class="tile-edge gold"></div>
+
+<!-- ================= 報名表單 ================= -->
+<section class="block form-section" id="register">
+  <div class="container">
+    <div class="section-head">
+      <span class="kicker">REGISTER</span>
+      <h2>線上報名</h2>
+      <p>請填寫以下資料，<span style="color:var(--vermilion)">＊</span>為必填。報名成功後，將以 E-mail 通知行前資訊。</p>
+    </div>
+
+    <form class="form-card" id="regForm" novalidate>
+      <div class="form-grid">
+        <div class="field full">
+          <label for="identity">身分<span class="req">＊</span></label>
+          <select id="identity" name="identity" required>
+            <option value="" disabled selected>請選擇身分（顯示剩餘名額）</option>
+          </select>
+          <span class="hint">下拉選單即時顯示各身分剩餘可報名人數。</span>
+          <span class="err">請選擇身分。</span>
+        </div>
+
+        <div class="field">
+          <label for="unit">單位<span class="req">＊</span></label>
+          <input type="text" id="unit" name="unit" placeholder="例：內科部、藥劑部、護理部" required autocomplete="organization">
+          <span class="err">請填寫單位。</span>
+        </div>
+        <div class="field">
+          <label for="name">姓名<span class="req">＊</span></label>
+          <input type="text" id="name" name="name" placeholder="請填寫真實姓名" required autocomplete="name">
+          <span class="err">請填寫姓名。</span>
+        </div>
+        <div class="field">
+          <label for="empId">人事號<span class="req">＊</span></label>
+          <input type="text" id="empId" name="empId" placeholder="例：910632" required inputmode="numeric" autocomplete="off">
+          <span class="err">請填寫人事號。</span>
+        </div>
+        <div class="field">
+          <label for="title">職稱<span class="req">＊</span></label>
+          <input type="text" id="title" name="title" placeholder="例：住院醫師、藥師、主治醫師" required autocomplete="organization-title">
+          <span class="err">請填寫職稱。</span>
+        </div>
+        <div class="field">
+          <label for="phone">手機簡碼／分機<span class="req">＊</span></label>
+          <input type="text" id="phone" name="phone" placeholder="例：簡碼 12345 或分機 57440" required inputmode="tel" autocomplete="tel">
+          <span class="err">請填寫手機簡碼或分機。</span>
+        </div>
+        <div class="field">
+          <label for="email">E-mail<span class="req">＊</span></label>
+          <input type="email" id="email" name="email" placeholder="name@chimei.org.tw" required autocomplete="email">
+          <span class="err">請填寫正確的 E-mail 格式。</span>
+        </div>
+
+        <!-- 旅責險專用區塊 -->
+        <fieldset class="insurance">
+          <legend>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+            旅責險專用
+          </legend>
+          <p class="ins-note">以下兩項資料僅供本活動投保「旅行責任保險」使用，將於投保完成後妥善保管、不作其他用途。</p>
+          <div class="form-grid">
+            <div class="field">
+              <label for="birth">出生日期<span class="req">＊</span></label>
+              <input type="date" id="birth" name="birth" required autocomplete="bday">
+              <span class="hint">請以西元年填寫。</span>
+              <span class="err">請填寫正確的出生日期。</span>
+            </div>
+            <div class="field">
+              <label for="nationalId">身分證號<span class="req">＊</span></label>
+              <input type="text" id="nationalId" name="nationalId" placeholder="例：A123456789" required maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase;letter-spacing:.08em">
+              <span class="hint">一碼英文字母＋九碼數字。</span>
+              <span class="err">身分證號格式不正確，請再確認。</span>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="field full">
+          <span class="label" style="font-weight:700;font-size:.93rem">餐食<span class="req">＊</span></span>
+          <div class="radio-group" id="mealGroup">
+            <label><input type="radio" name="meal" value="葷食" required> 🍜 葷食</label>
+            <label><input type="radio" name="meal" value="素食"> 🌿 素食</label>
+          </div>
+          <span class="err">請選擇餐食。</span>
+        </div>
+
+        <label class="consent">
+          <input type="checkbox" id="consent" name="consent" required>
+          <span>本人已了解「出生日期」與「身分證號」僅供旅責險投保使用，並同意教學部為辦理本活動蒐集、處理與利用上述個人資料。</span>
+        </label>
+
+        <div class="form-msg" id="formMsg" role="alert"></div>
+
+        <div class="form-actions">
+          <span class="hint" style="font-size:.85rem;color:var(--ink-soft)">送出前請再次確認資料正確。</span>
+          <button type="submit" class="btn btn-primary" id="submitBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+            送出報名
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ================= 頁尾 ================= -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h4>360°醫學人生｜走進臺南，走進生活</h4>
+        <p>奇美醫院教學部 × 島內散步 Walk in Taiwan</p>
+        <p>呼應健康台灣深耕計畫，落實「照顧臺南人一輩子」之核心價值。</p>
+        <p style="margin-top:.8rem"><a href="assets/itinerary.pdf" download="360°醫學人生｜走進臺南，走進生活行程.pdf">⬇ 下載行程 PDF</a></p>
+      </div>
+      <div>
+        <h4>集合資訊</h4>
+        <p>第一天｜08:50–09:00</p>
+        <p>第二天｜09:20–09:30</p>
+        <p>上車地點｜第一醫療大樓前方廣場</p>
+      </div>
+      <div>
+        <h4>聯絡窗口</h4>
+        <p>林盟淦 教學行政管理員</p>
+        <p>電話｜06-281-2811 分機 57440</p>
+        <p>信箱｜<a href="mailto:910632@chimei.org.tw">910632@chimei.org.tw</a></p>
+      </div>
+    </div>
+    <div class="copy">© 奇美醫療財團法人奇美醫院 教學部・行程內容由島內散步 Walk in Taiwan 提供，實際以現場為主。</div>
+  </div>
+</footer>
+
+<button class="toTop" id="toTop" aria-label="回到頂端">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+</button>
+
+<!-- 成功視窗 -->
+<div class="modal" id="successModal" role="dialog" aria-modal="true" aria-labelledby="successTitle">
+  <div class="modal-card">
+    <div class="seal">報名<br>完成</div>
+    <h3 id="successTitle">報名成功！</h3>
+    <p>感謝您的報名，教學部將以 E-mail 通知行前資訊。</p>
+    <div class="summary" id="successSummary"></div>
+    <p style="font-size:.85rem">集合｜第一天 08:50–09:00・第二天 09:20–09:30<br>地點｜第一醫療大樓前方廣場</p>
+    <button class="btn btn-primary" id="closeModal" type="button" style="margin-top:.6rem">關閉</button>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   設定：後端 API（Google Apps Script 網頁應用程式）
+   - 部署 apps-script/Code.gs 後，將「網頁應用程式網址」貼入 API_URL。
+   - API_URL 留空時為「示範模式」：名額計數僅存於此瀏覽器 (localStorage)。
+   ===================================================================== */
+const CONFIG = {
+  API_URL: "",
+  POLL_MS: 30000
+};
+
+const IDENTITIES = [
+  { key: "西醫UGY",     limit: 8,  color: "#5a7a3c" },
+  { key: "西醫PGY",     limit: 10, color: "#c25d3b" },
+  { key: "醫事職類PGY", limit: 9,  color: "#3f6f86" },
+  { key: "臨床教師",    limit: 8,  color: "#a7781f" }
+];
+const LS_KEY = "tainan360_demo_registrations";
+
+let counts = Object.fromEntries(IDENTITIES.map(i => [i.key, 0]));
+let backendOnline = false;
+
+/* ---------- 跑馬燈：複製一份內容以無縫循環 ---------- */
+(function(){
+  const track = document.getElementById("marqueeTrack");
+  track.innerHTML += track.innerHTML;
+})();
+
+/* ---------- Day 分頁 ---------- */
+document.querySelectorAll(".day-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".day-tab").forEach(t => t.setAttribute("aria-selected", "false"));
+    document.querySelectorAll(".day-panel").forEach(p => p.classList.remove("active"));
+    tab.setAttribute("aria-selected", "true");
+    document.getElementById(tab.getAttribute("aria-controls")).classList.add("active");
+  });
+});
+
+/* ---------- 回到頂端 ---------- */
+const toTop = document.getElementById("toTop");
+window.addEventListener("scroll", () => toTop.classList.toggle("show", window.scrollY > 600), { passive: true });
+toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+
+/* ---------- 名額：讀取 ---------- */
+function demoCounts(){
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch(e){}
+  const c = Object.fromEntries(IDENTITIES.map(i => [i.key, 0]));
+  list.forEach(r => { if (c[r.identity] !== undefined) c[r.identity]++; });
+  return c;
+}
+
+async function fetchCounts(){
+  if (!CONFIG.API_URL){
+    counts = demoCounts();
+    backendOnline = false;
+    renderQuota();
+    return;
+  }
+  try {
+    const res = await fetch(CONFIG.API_URL + (CONFIG.API_URL.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
+    const data = await res.json();
+    if (data && data.counts){
+      IDENTITIES.forEach(i => { counts[i.key] = Number(data.counts[i.key] || 0); });
+      backendOnline = true;
+    }
+  } catch(err){
+    console.warn("無法取得名額資料", err);
+    backendOnline = false;
+  }
+  renderQuota();
+}
+
+function remaining(key){
+  const item = IDENTITIES.find(i => i.key === key);
+  return Math.max(0, item.limit - (counts[key] || 0));
+}
+
+/* ---------- 名額：畫面 ---------- */
+function renderQuota(){
+  const grid = document.getElementById("quotaGrid");
+  grid.innerHTML = IDENTITIES.map(i => {
+    const left = remaining(i.key);
+    const used = i.limit - left;
+    const pct = Math.round(used / i.limit * 100);
+    return `
+      <div class="quota-card ${left === 0 ? "is-full" : ""}" style="--q-color:${i.color}">
+        <div class="q-name">${i.key}</div>
+        <div class="q-num"><b>${left}</b><span>／ ${i.limit} 名 尚可報名</span></div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <div class="q-foot"><span>已報名 ${used} 人</span><span>限額 ${i.limit} 人</span></div>
+        <div class="q-full"><span>額滿</span></div>
+      </div>`;
+  }).join("");
+
+  // 下拉選單即時顯示剩餘名額
+  const sel = document.getElementById("identity");
+  const current = sel.value;
+  sel.innerHTML = `<option value="" disabled ${current ? "" : "selected"}>請選擇身分（顯示剩餘名額）</option>` +
+    IDENTITIES.map(i => {
+      const left = remaining(i.key);
+      const label = left > 0 ? `${i.key}（剩餘 ${left} 名／限額 ${i.limit} 名）` : `${i.key}（已額滿）`;
+      return `<option value="${i.key}" ${left === 0 ? "disabled" : ""} ${current === i.key && left > 0 ? "selected" : ""}>${label}</option>`;
+    }).join("");
+
+  const pulse = document.getElementById("livePulse");
+  const text = document.getElementById("liveText");
+  const now = new Date();
+  const stamp = now.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+  if (CONFIG.API_URL){
+    pulse.classList.toggle("off", !backendOnline);
+    text.textContent = backendOnline ? `名額即時更新中・最後更新 ${stamp}` : `暫時無法連線名額伺服器，顯示為上次資料（${stamp}）`;
+  } else {
+    pulse.classList.add("off");
+    text.textContent = `示範模式：尚未連接名額伺服器（設定 CONFIG.API_URL 後即時同步）・${stamp}`;
+  }
+}
+
+/* ---------- 驗證 ---------- */
+function validTaiwanId(id){
+  id = (id || "").toUpperCase().trim();
+  if (!/^[A-Z][1289]\d{8}$/.test(id)) return false;
+  const map = { A:10,B:11,C:12,D:13,E:14,F:15,G:16,H:17,I:34,J:18,K:19,L:20,M:21,N:22,O:35,P:23,Q:24,R:25,S:26,T:27,U:28,V:29,W:32,X:30,Y:31,Z:33 };
+  const code = map[id[0]];
+  const digits = [Math.floor(code / 10), code % 10, ...id.slice(1).split("").map(Number)];
+  const weights = [1,9,8,7,6,5,4,3,2,1,1];
+  const sum = digits.reduce((s, d, i) => s + d * weights[i], 0);
+  return sum % 10 === 0;
+}
+
+function setInvalid(el, bad){
+  const field = el.closest(".field");
+  if (field) field.classList.toggle("invalid", bad);
+  return !bad;
+}
+
+function validateForm(){
+  let ok = true;
+  const f = document.getElementById("regForm");
+  const identity = f.identity;
+  ok = setInvalid(identity, !identity.value || remaining(identity.value) === 0) && ok;
+  ["unit","name","empId","title","phone"].forEach(n => { ok = setInvalid(f[n], !f[n].value.trim()) && ok; });
+  ok = setInvalid(f.email, !f.email.value.trim() || !f.email.checkValidity()) && ok;
+
+  const birth = f.birth;
+  let birthBad = !birth.value;
+  if (!birthBad){
+    const d = new Date(birth.value);
+    const now = new Date();
+    birthBad = isNaN(d) || d > now || d.getFullYear() < 1920;
+  }
+  ok = setInvalid(birth, birthBad) && ok;
+
+  ok = setInvalid(f.nationalId, !validTaiwanId(f.nationalId.value)) && ok;
+
+  const mealChecked = f.querySelector("input[name=meal]:checked");
+  ok = setInvalid(document.getElementById("mealGroup"), !mealChecked) && ok;
+
+  const msg = document.getElementById("formMsg");
+  if (!f.consent.checked){
+    msg.className = "form-msg error";
+    msg.textContent = "請勾選同意個人資料使用說明後再送出。";
+    ok = false;
+  } else if (!ok){
+    msg.className = "form-msg error";
+    msg.textContent = "部分欄位尚未填寫或格式不正確，請檢查紅色提示。";
+  } else {
+    msg.className = "form-msg";
+    msg.textContent = "";
+  }
+  return ok;
+}
+
+// 即時清除錯誤標示
+document.getElementById("regForm").addEventListener("input", e => {
+  const field = e.target.closest(".field");
+  if (field) field.classList.remove("invalid");
+});
+document.getElementById("nationalId").addEventListener("input", e => { e.target.value = e.target.value.toUpperCase(); });
+document.getElementById("birth").max = new Date().toISOString().slice(0, 10);
+
+/* ---------- 送出 ---------- */
+async function submitRegistration(payload){
+  if (!CONFIG.API_URL){
+    // 示範模式：寫入 localStorage
+    await new Promise(r => setTimeout(r, 500));
+    if (remaining(payload.identity) === 0) return { ok: false, error: "full" };
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch(e){}
+    if (list.some(r => r.empId === payload.empId)) return { ok: false, error: "duplicate" };
+    list.push({ ...payload, ts: new Date().toISOString() });
+    localStorage.setItem(LS_KEY, JSON.stringify(list));
+    return { ok: true };
+  }
+  // Apps Script：使用 text/plain 避免 CORS preflight
+  const res = await fetch(CONFIG.API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  });
+  return await res.json();
+}
+
+document.getElementById("regForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  await fetchCounts(); // 送出前先更新名額
+  if (!validateForm()){
+    const first = document.querySelector(".field.invalid, .form-msg.error");
+    if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  const f = e.target;
+  const payload = {
+    identity: f.identity.value,
+    unit: f.unit.value.trim(),
+    name: f.name.value.trim(),
+    empId: f.empId.value.trim(),
+    title: f.title.value.trim(),
+    phone: f.phone.value.trim(),
+    email: f.email.value.trim(),
+    birth: f.birth.value,
+    nationalId: f.nationalId.value.trim().toUpperCase(),
+    meal: f.querySelector("input[name=meal]:checked").value,
+    userAgent: navigator.userAgent
+  };
+
+  const btn = document.getElementById("submitBtn");
+  const msg = document.getElementById("formMsg");
+  btn.disabled = true;
+  btn.textContent = "送出中…";
+  try {
+    const result = await submitRegistration(payload);
+    if (result && result.ok){
+      if (result.counts){ IDENTITIES.forEach(i => { counts[i.key] = Number(result.counts[i.key] || 0); }); }
+      else { counts = demoCounts(); }
+      renderQuota();
+      showSuccess(payload);
+      f.reset();
+      renderQuota();
+    } else {
+      msg.className = "form-msg error";
+      const errMap = {
+        full: "很抱歉，您選擇的身分名額已額滿，請洽教學部詢問候補。",
+        duplicate: "此人事號已完成報名，如需修改請聯絡教學部（分機 57440）。",
+        invalid: "資料格式不正確，請檢查後重新送出。"
+      };
+      msg.textContent = errMap[result && result.error] || (result && result.message) || "送出失敗，請稍後再試或聯絡教學部。";
+      msg.scrollIntoView({ behavior: "smooth", block: "center" });
+      await fetchCounts();
+    }
+  } catch(err){
+    console.error(err);
+    msg.className = "form-msg error";
+    msg.textContent = "網路連線失敗，請稍後再試或聯絡教學部（分機 57440）。";
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg> 送出報名';
+  }
+});
+
+function showSuccess(p){
+  const s = document.getElementById("successSummary");
+  s.innerHTML = [
+    ["身分", p.identity], ["單位", p.unit], ["姓名", p.name], ["人事號", p.empId],
+    ["職稱", p.title], ["手機簡碼／分機", p.phone], ["E-mail", p.email], ["餐食", p.meal]
+  ].map(([k, v]) => `<div><span>${k}</span><strong>${escapeHtml(v)}</strong></div>`).join("");
+  document.getElementById("successModal").classList.add("open");
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+document.getElementById("closeModal").addEventListener("click", () => document.getElementById("successModal").classList.remove("open"));
+document.getElementById("successModal").addEventListener("click", e => { if (e.target.id === "successModal") e.currentTarget.classList.remove("open"); });
+
+/* ---------- 啟動 ---------- */
+fetchCounts();
+setInterval(fetchCounts, CONFIG.POLL_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) fetchCounts(); });
+</script>
+</body>
+</html>
