@@ -214,7 +214,7 @@ h1,h2,h3,h4{font-family:var(--serif);margin:0;line-height:1.25}
 .wave.w2{animation-duration:14s;animation-direction:reverse;opacity:.5}
 @keyframes waves{from{transform:translateX(0)}to{transform:translateX(-240px)}}
 .raft-sail{animation:sail 46s ease-in-out infinite alternate}
-@keyframes sail{from{transform:translateX(-230px)}to{transform:translateX(430px)}}
+@keyframes sail{from{transform:translateX(-185px)}to{transform:translateX(430px)}}
 .raft{animation:bob 4.5s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 50%}
 @keyframes bob{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-5px) rotate(1deg)}}
 .pole{animation:row 2.4s ease-in-out infinite;transform-box:fill-box;transform-origin:15% 0}
@@ -811,6 +811,33 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
         <ellipse cx="14" cy="8" rx="22" ry="12" fill="#e64c67"/>
         <path d="M-26 10 q12 -10 24 0 M2 8 q12 -10 24 0" fill="none" stroke="#f3a6b7" stroke-width="2"/>
         <circle cx="-14" cy="6" r="4" fill="none" stroke="#f3a6b7" stroke-width="2"/><circle cx="14" cy="4" r="4" fill="none" stroke="#f3a6b7" stroke-width="2"/>
+      </g>
+
+      <!-- 擔仔麵 (紅龜粿旁) -->
+      <g transform="translate(400,312)">
+        <ellipse cx="0" cy="30" rx="30" ry="5" fill="#a07a50" opacity=".45"/>
+        <!-- 熱氣 -->
+        <g fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".9">
+          <g class="steam t1"><path d="M-10 -6 c-3 -5 3 -7 0 -12"/></g>
+          <g class="steam t2"><path d="M0 -8 c-3 -5 3 -7 0 -12"/></g>
+          <g class="steam t3"><path d="M10 -6 c-3 -5 3 -7 0 -12"/></g>
+        </g>
+        <!-- 筷子 -->
+        <line x1="8" y1="-18" x2="26" y2="6" stroke="#8a5a2a" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="13" y1="-19" x2="29" y2="4" stroke="#a8743a" stroke-width="2.5" stroke-linecap="round"/>
+        <!-- 碗 -->
+        <path d="M-26 6 C -24 26, 24 26, 26 6 Z" fill="#f4e4c8" stroke="#b4432f" stroke-width="2.5"/>
+        <path d="M-20 12 q20 4 40 0" fill="none" stroke="#b4432f" stroke-width="2"/>
+        <rect x="-11" y="24" width="22" height="5" rx="2" fill="#b4432f"/>
+        <!-- 湯與麵 -->
+        <ellipse cx="0" cy="6" rx="26" ry="7" fill="#c98a3a"/>
+        <ellipse cx="0" cy="6" rx="23" ry="5.5" fill="#d9a04a"/>
+        <path d="M-17 6 q3 -4 6 0 t6 0 t6 0 t6 0 t6 0" fill="none" stroke="#f3c65f" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M-14 8.5 q3 -3 6 0 t6 0 t6 0 t6 0" fill="none" stroke="#f6d77c" stroke-width="2" stroke-linecap="round"/>
+        <!-- 蝦與配料 -->
+        <path d="M-7 4 c 3 -9 12 -9 15 -1" fill="none" stroke="#e4572e" stroke-width="4.2" stroke-linecap="round"/>
+        <path d="M-7 4 c 3 -9 12 -9 15 -1" fill="none" stroke="#f58a68" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="2 3"/>
+        <circle cx="-13" cy="3" r="2.2" fill="#7fb04f"/><circle cx="12" cy="4" r="2" fill="#7fb04f"/><circle cx="2" cy="2" r="1.8" fill="#5b2418"/>
       </g>
 
       <!-- 四草綠色隧道：水面 -->
