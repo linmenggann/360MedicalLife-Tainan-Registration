@@ -385,6 +385,18 @@ section.block{padding:4.5rem 0}
 
 /* ---------- 名額 ---------- */
 .quota-section{background:#fff}
+.seg{display:flex;justify-content:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.6rem}
+.seg-btn{
+  display:flex;flex-direction:column;align-items:center;gap:.05rem;
+  min-width:150px;padding:.55rem 1.2rem;border-radius:14px;cursor:pointer;
+  background:#fff;border:2px solid var(--line);color:var(--ink-soft);font-family:var(--sans);
+  transition:all .2s;
+}
+.seg-btn b{font-family:var(--serif);font-size:1.05rem;color:inherit}
+.seg-btn small{font-size:.78rem;letter-spacing:.04em}
+.seg-btn:hover{border-color:var(--brick);color:var(--brick)}
+.seg-btn[aria-pressed="true"]{background:var(--brick);border-color:var(--brick);color:#fff;box-shadow:0 8px 18px rgba(139,47,34,.25)}
+@media (max-width:520px){.seg-btn{min-width:0;flex:1 1 30%;padding:.5rem .6rem}.seg-btn b{font-size:.95rem}}
 .quota-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2rem}
 .quota-card{
   border-radius:var(--radius);padding:1.4rem 1.3rem 1.2rem;
@@ -435,6 +447,7 @@ section.block{padding:4.5rem 0}
   background:#fff;color:var(--ink);transition:border .2s,box-shadow .2s;width:100%;
 }
 .field input:focus,.field select:focus{outline:none;border-color:var(--brick);box-shadow:0 0 0 4px rgba(180,67,47,.14)}
+.field select:disabled{background-color:var(--rice);color:var(--ink-soft);cursor:not-allowed}
 .field input:invalid:not(:placeholder-shown){border-color:#d98b7c}
 .field .hint{font-size:.78rem;color:var(--ink-soft)}
 .field .err{font-size:.8rem;color:var(--vermilion);display:none}
@@ -1087,8 +1100,9 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
     <div class="section-head">
       <span class="kicker">QUOTA</span>
       <h2>報名名額即時查詢</h2>
-      <p>各身分別採限額報名，額滿即關閉該身分之報名。</p>
+      <p>三梯次分別計算名額，各身分別採限額報名，額滿即關閉該梯次該身分之報名。請點選梯次查看剩餘名額。</p>
     </div>
+    <div class="seg" id="quotaSessions" role="group" aria-label="選擇梯次"></div>
     <div class="quota-grid" id="quotaGrid"></div>
     <div class="live"><span class="pulse" id="livePulse"></span><span id="liveText">名額資料載入中…</span></div>
   </div>
@@ -1107,12 +1121,20 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 
     <form class="form-card" id="regForm" novalidate>
       <div class="form-grid">
-        <div class="field full">
-          <label for="identity">身分<span class="req">＊</span></label>
-          <select id="identity" name="identity" required>
-            <option value="" disabled selected>請選擇身分（顯示剩餘名額）</option>
+        <div class="field">
+          <label for="session">梯次<span class="req">＊</span></label>
+          <select id="session" name="session" required>
+            <option value="" disabled selected>請選擇梯次</option>
           </select>
-          <span class="hint">下拉選單即時顯示各身分剩餘可報名人數。</span>
+          <span class="hint">每梯次 2 日，三梯次擇一報名。</span>
+          <span class="err">請選擇梯次。</span>
+        </div>
+        <div class="field">
+          <label for="identity">身分<span class="req">＊</span></label>
+          <select id="identity" name="identity" required disabled>
+            <option value="" disabled selected>請先選擇梯次</option>
+          </select>
+          <span class="hint">下拉選單即時顯示所選梯次各身分剩餘名額。</span>
           <span class="err">請選擇身分。</span>
         </div>
 
@@ -1246,12 +1268,19 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
    設定：後端 API（Google Apps Script 網頁應用程式）
    - 部署 apps-script/Code.gs 後，將「網頁應用程式網址」貼入 API_URL。
    - API_URL 留空時為「示範模式」：名額計數僅存於此瀏覽器 (localStorage)。
+   - QUOTA_SCOPE："session" = 各梯次分別計算名額；"total" = 三梯次共用名額。
    ===================================================================== */
 const CONFIG = {
   API_URL: "",
-  POLL_MS: 30000
+  POLL_MS: 30000,
+  QUOTA_SCOPE: "session"
 };
 
+const SESSIONS = [
+  { key: "第一梯次", date: "115/10/17（六）–10/18（日）", short: "10/17–10/18" },
+  { key: "第二梯次", date: "115/11/21（六）–11/22（日）", short: "11/21–11/22" },
+  { key: "第三梯次", date: "115/12/5（六）–12/6（日）",   short: "12/5–12/6" }
+];
 const IDENTITIES = [
   { key: "西醫UGY",     limit: 8,  color: "#5a7a3c" },
   { key: "西醫PGY",     limit: 10, color: "#c25d3b" },
@@ -1260,8 +1289,12 @@ const IDENTITIES = [
 ];
 const LS_KEY = "tainan360_demo_registrations";
 
-let counts = Object.fromEntries(IDENTITIES.map(i => [i.key, 0]));
+function emptyCounts(){
+  return Object.fromEntries(SESSIONS.map(s => [s.key, Object.fromEntries(IDENTITIES.map(i => [i.key, 0]))]));
+}
+let counts = emptyCounts();
 let backendOnline = false;
+let quotaView = SESSIONS[0].key;   // 名額區塊目前顯示的梯次
 
 /* ---------- 跑馬燈：複製一份內容以無縫循環 ---------- */
 (function(){
@@ -1284,12 +1317,33 @@ const toTop = document.getElementById("toTop");
 window.addEventListener("scroll", () => toTop.classList.toggle("show", window.scrollY > 600), { passive: true });
 toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
 
+/* ---------- 梯次選單（表單） ---------- */
+(function(){
+  const sel = document.getElementById("session");
+  sel.innerHTML = `<option value="" disabled selected>請選擇梯次</option>` +
+    SESSIONS.map(s => `<option value="${s.key}">${s.key}｜${s.date}</option>`).join("");
+  sel.addEventListener("change", () => {
+    if (sel.value){ quotaView = sel.value; }
+    renderQuota();
+  });
+})();
+
 /* ---------- 名額：讀取 ---------- */
+function applyCounts(data){
+  const next = emptyCounts();
+  if (!data) return next;
+  SESSIONS.forEach(s => {
+    const row = data[s.key] || {};
+    IDENTITIES.forEach(i => { next[s.key][i.key] = Number(row[i.key] || 0); });
+  });
+  return next;
+}
+
 function demoCounts(){
   let list = [];
   try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch(e){}
-  const c = Object.fromEntries(IDENTITIES.map(i => [i.key, 0]));
-  list.forEach(r => { if (c[r.identity] !== undefined) c[r.identity]++; });
+  const c = emptyCounts();
+  list.forEach(r => { if (c[r.session] && c[r.session][r.identity] !== undefined) c[r.session][r.identity]++; });
   return c;
 }
 
@@ -1304,7 +1358,7 @@ async function fetchCounts(){
     const res = await fetch(CONFIG.API_URL + (CONFIG.API_URL.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
     const data = await res.json();
     if (data && data.counts){
-      IDENTITIES.forEach(i => { counts[i.key] = Number(data.counts[i.key] || 0); });
+      counts = applyCounts(data.counts);
       backendOnline = true;
     }
   } catch(err){
@@ -1314,42 +1368,67 @@ async function fetchCounts(){
   renderQuota();
 }
 
-function remaining(key){
-  const item = IDENTITIES.find(i => i.key === key);
-  return Math.max(0, item.limit - (counts[key] || 0));
+function used(identity, session){
+  if (CONFIG.QUOTA_SCOPE === "total"){
+    return SESSIONS.reduce((n, s) => n + (counts[s.key][identity] || 0), 0);
+  }
+  return (counts[session] && counts[session][identity]) || 0;
+}
+function remaining(identity, session){
+  const item = IDENTITIES.find(i => i.key === identity);
+  if (!item) return 0;
+  return Math.max(0, item.limit - used(identity, session));
 }
 
 /* ---------- 名額：畫面 ---------- */
 function renderQuota(){
+  // 梯次切換鈕
+  const seg = document.getElementById("quotaSessions");
+  seg.innerHTML = SESSIONS.map(s => `
+    <button type="button" class="seg-btn" data-session="${s.key}" aria-pressed="${s.key === quotaView}">
+      <b>${s.key}</b><small>${s.short}</small>
+    </button>`).join("");
+  seg.querySelectorAll(".seg-btn").forEach(btn => btn.addEventListener("click", () => {
+    quotaView = btn.dataset.session;
+    renderQuota();
+  }));
+
   const grid = document.getElementById("quotaGrid");
   grid.innerHTML = IDENTITIES.map(i => {
-    const left = remaining(i.key);
-    const used = i.limit - left;
-    const pct = Math.round(used / i.limit * 100);
+    const left = remaining(i.key, quotaView);
+    const usedN = i.limit - left;
+    const pct = Math.round(usedN / i.limit * 100);
     return `
       <div class="quota-card ${left === 0 ? "is-full" : ""}" style="--q-color:${i.color}">
         <div class="q-name">${i.key}</div>
         <div class="q-num"><b>${left}</b><span>／ ${i.limit} 名 尚可報名</span></div>
         <div class="bar"><i style="width:${pct}%"></i></div>
-        <div class="q-foot"><span>已報名 ${used} 人</span><span>限額 ${i.limit} 人</span></div>
+        <div class="q-foot"><span>已報名 ${usedN} 人</span><span>限額 ${i.limit} 人</span></div>
         <div class="q-full"><span>額滿</span></div>
       </div>`;
   }).join("");
 
-  // 下拉選單即時顯示剩餘名額
+  // 身分下拉選單：依表單所選梯次即時顯示剩餘名額
+  const sessionSel = document.getElementById("session");
   const sel = document.getElementById("identity");
   const current = sel.value;
-  sel.innerHTML = `<option value="" disabled ${current ? "" : "selected"}>請選擇身分（顯示剩餘名額）</option>` +
-    IDENTITIES.map(i => {
-      const left = remaining(i.key);
-      const label = left > 0 ? `${i.key}（剩餘 ${left} 名／限額 ${i.limit} 名）` : `${i.key}（已額滿）`;
-      return `<option value="${i.key}" ${left === 0 ? "disabled" : ""} ${current === i.key && left > 0 ? "selected" : ""}>${label}</option>`;
-    }).join("");
+  const session = sessionSel.value;
+  if (!session){
+    sel.disabled = true;
+    sel.innerHTML = `<option value="" disabled selected>請先選擇梯次</option>`;
+  } else {
+    sel.disabled = false;
+    sel.innerHTML = `<option value="" disabled ${current ? "" : "selected"}>請選擇身分（顯示剩餘名額）</option>` +
+      IDENTITIES.map(i => {
+        const left = remaining(i.key, session);
+        const label = left > 0 ? `${i.key}（剩餘 ${left} 名／限額 ${i.limit} 名）` : `${i.key}（已額滿）`;
+        return `<option value="${i.key}" ${left === 0 ? "disabled" : ""} ${current === i.key && left > 0 ? "selected" : ""}>${label}</option>`;
+      }).join("");
+  }
 
   const pulse = document.getElementById("livePulse");
   const text = document.getElementById("liveText");
-  const now = new Date();
-  const stamp = now.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+  const stamp = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
   if (CONFIG.API_URL){
     pulse.classList.toggle("off", !backendOnline);
     text.textContent = backendOnline ? `名額即時更新中・最後更新 ${stamp}` : `暫時無法連線名額伺服器，顯示為上次資料（${stamp}）`;
@@ -1380,8 +1459,9 @@ function setInvalid(el, bad){
 function validateForm(){
   let ok = true;
   const f = document.getElementById("regForm");
+  ok = setInvalid(f.session, !f.session.value) && ok;
   const identity = f.identity;
-  ok = setInvalid(identity, !identity.value || remaining(identity.value) === 0) && ok;
+  ok = setInvalid(identity, !identity.value || remaining(identity.value, f.session.value) === 0) && ok;
   ["unit","name","empId","title","phone"].forEach(n => { ok = setInvalid(f[n], !f[n].value.trim()) && ok; });
   ok = setInvalid(f.email, !f.email.value.trim() || !f.email.checkValidity()) && ok;
 
@@ -1427,10 +1507,11 @@ async function submitRegistration(payload){
   if (!CONFIG.API_URL){
     // 示範模式：寫入 localStorage
     await new Promise(r => setTimeout(r, 500));
-    if (remaining(payload.identity) === 0) return { ok: false, error: "full" };
+    if (remaining(payload.identity, payload.session) === 0) return { ok: false, error: "full" };
     let list = [];
     try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch(e){}
-    if (list.some(r => r.empId === payload.empId)) return { ok: false, error: "duplicate" };
+    const dup = list.find(r => r.empId === payload.empId);
+    if (dup) return { ok: false, error: "duplicate", message: `此人事號已報名${dup.session}，如需修改請聯絡教學部（分機 57440）。` };
     list.push({ ...payload, ts: new Date().toISOString() });
     localStorage.setItem(LS_KEY, JSON.stringify(list));
     return { ok: true };
@@ -1454,6 +1535,7 @@ document.getElementById("regForm").addEventListener("submit", async e => {
   }
   const f = e.target;
   const payload = {
+    session: f.session.value,
     identity: f.identity.value,
     unit: f.unit.value.trim(),
     name: f.name.value.trim(),
@@ -1463,8 +1545,7 @@ document.getElementById("regForm").addEventListener("submit", async e => {
     email: f.email.value.trim(),
     birth: f.birth.value,
     nationalId: f.nationalId.value.trim().toUpperCase(),
-    meal: f.querySelector("input[name=meal]:checked").value,
-    userAgent: navigator.userAgent
+    meal: f.querySelector("input[name=meal]:checked").value
   };
 
   const btn = document.getElementById("submitBtn");
@@ -1474,20 +1555,18 @@ document.getElementById("regForm").addEventListener("submit", async e => {
   try {
     const result = await submitRegistration(payload);
     if (result && result.ok){
-      if (result.counts){ IDENTITIES.forEach(i => { counts[i.key] = Number(result.counts[i.key] || 0); }); }
-      else { counts = demoCounts(); }
-      renderQuota();
+      counts = result.counts ? applyCounts(result.counts) : demoCounts();
       showSuccess(payload);
       f.reset();
       renderQuota();
     } else {
       msg.className = "form-msg error";
       const errMap = {
-        full: "很抱歉，您選擇的身分名額已額滿，請洽教學部詢問候補。",
+        full: "很抱歉，該梯次此身分名額已額滿，請改選其他梯次或洽教學部詢問候補。",
         duplicate: "此人事號已完成報名，如需修改請聯絡教學部（分機 57440）。",
         invalid: "資料格式不正確，請檢查後重新送出。"
       };
-      msg.textContent = errMap[result && result.error] || (result && result.message) || "送出失敗，請稍後再試或聯絡教學部。";
+      msg.textContent = (result && result.message) || errMap[result && result.error] || "送出失敗，請稍後再試或聯絡教學部。";
       msg.scrollIntoView({ behavior: "smooth", block: "center" });
       await fetchCounts();
     }
@@ -1503,7 +1582,9 @@ document.getElementById("regForm").addEventListener("submit", async e => {
 
 function showSuccess(p){
   const s = document.getElementById("successSummary");
+  const sess = SESSIONS.find(x => x.key === p.session);
   s.innerHTML = [
+    ["梯次", sess ? `${sess.key}（${sess.date}）` : p.session],
     ["身分", p.identity], ["單位", p.unit], ["姓名", p.name], ["人事號", p.empId],
     ["職稱", p.title], ["手機簡碼／分機", p.phone], ["E-mail", p.email], ["餐食", p.meal]
   ].map(([k, v]) => `<div><span>${k}</span><strong>${escapeHtml(v)}</strong></div>`).join("");
