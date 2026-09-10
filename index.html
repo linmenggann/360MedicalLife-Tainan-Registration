@@ -261,15 +261,50 @@ section.block{padding:4.5rem 0}
 /* ---------- 活動資訊 ---------- */
 .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem;margin-bottom:2.6rem}
 .pillar{
-  background:var(--paper);border-radius:var(--radius);padding:1.6rem 1.5rem;
-  box-shadow:var(--shadow);border-top:5px solid var(--brick);
+  --p-color:var(--brick);--p-soft:#fdf1ec;
+  background:var(--paper);border-radius:var(--radius);padding:1.5rem 1.4rem;
+  box-shadow:var(--shadow);border-left:6px solid var(--p-color);
   position:relative;overflow:hidden;
+  display:flex;align-items:center;gap:1.1rem;
 }
-.pillar:nth-child(2){border-top-color:var(--green)}
-.pillar:nth-child(3){border-top-color:var(--gold)}
-.pillar .icon{width:64px;height:64px;margin-bottom:.9rem}
-.pillar h3{font-size:1.35rem;color:#1f3a3d;margin-bottom:.4rem}
-.pillar p{margin:0;color:var(--ink-soft);font-size:.95rem}
+.pillar::after{ /* 屋瓦紋 */
+  content:"";position:absolute;left:0;right:0;bottom:0;height:8px;opacity:.5;
+  background:radial-gradient(circle at 50% 100%,var(--p-color) 0 45%,transparent 48%) 0 0/18px 8px repeat-x;
+}
+.pillar:nth-child(2){--p-color:var(--green);--p-soft:#e8f1ea}
+.pillar:nth-child(3){--p-color:var(--gold);--p-soft:#fbf3df}
+.pillar .icon-wrap{
+  flex:none;width:96px;height:96px;border-radius:50%;background:var(--p-soft);
+  display:grid;place-items:center;box-shadow:inset 0 0 0 2px #fff,0 0 0 1px var(--line);
+}
+.pillar .icon{width:60px;height:60px}
+.pillar .num{
+  position:absolute;right:.6rem;top:-.4rem;font-family:var(--serif);font-weight:900;
+  font-size:4rem;line-height:1;color:var(--p-color);opacity:.1;pointer-events:none;
+}
+.pillar-body{position:relative;min-width:0}
+.pillar h3{font-size:1.5rem;color:#1f3a3d;margin-bottom:.45rem;letter-spacing:.06em}
+.pillar h3::after{content:"";display:block;width:34px;height:3px;background:var(--p-color);border-radius:2px;margin-top:.3rem}
+.pillar-desc{margin:0;display:grid;gap:.3rem}
+.pillar-desc span{position:relative;padding-left:1.05rem;font-size:.98rem;color:var(--ink);line-height:1.55}
+.pillar-desc span:first-child{font-weight:700;color:#1f3a3d}
+.pillar-desc span::before{
+  content:"";position:absolute;left:0;top:.6em;width:7px;height:7px;transform:rotate(45deg);background:var(--p-color);
+}
+@media (max-width:1100px) and (min-width:861px){
+  .pillar{flex-direction:column;align-items:flex-start;gap:.9rem}
+  .pillar .icon-wrap{width:80px;height:80px}
+  .pillar .icon{width:50px;height:50px}
+}
+@media (max-width:480px){
+  .pillar{display:grid;grid-template-columns:64px 1fr;grid-template-areas:"icon title" "desc desc";column-gap:.9rem;row-gap:.5rem;align-items:center;padding:1.3rem 1.2rem 1.4rem}
+  .pillar .icon-wrap{grid-area:icon;width:64px;height:64px}
+  .pillar .icon{width:42px;height:42px}
+  .pillar-body{display:contents}
+  .pillar h3{grid-area:title;margin:0;font-size:1.35rem}
+  .pillar-desc{grid-area:desc}
+  .pillar .num{font-size:3.2rem}
+}
 .steam{animation:steamUp 3s ease-out infinite;opacity:0;transform-box:fill-box;transform-origin:50% 100%}
 .steam.t2{animation-delay:1s}.steam.t3{animation-delay:2s}
 @keyframes steamUp{0%{opacity:0;transform:translateY(0)}30%{opacity:.8}100%{opacity:0;transform:translateY(-16px)}}
@@ -809,6 +844,8 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 
     <div class="pillars">
       <article class="pillar">
+        <span class="num" aria-hidden="true">01</span>
+        <div class="icon-wrap">
         <svg class="icon" viewBox="0 0 64 64" aria-hidden="true">
           <g class="steam t1" stroke="#b4432f" stroke-width="2.5" fill="none" stroke-linecap="round"><path d="M24 24 c-3 -4 3 -6 0 -10"/></g>
           <g class="steam t2" stroke="#b4432f" stroke-width="2.5" fill="none" stroke-linecap="round"><path d="M32 22 c-3 -4 3 -6 0 -10"/></g>
@@ -818,28 +855,41 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
           <path d="M20 36 q12 6 24 0" fill="none" stroke="#b4432f" stroke-width="2"/>
           <rect x="22" y="54" width="20" height="4" rx="2" fill="#b4432f"/>
         </svg>
-        <h3>飲食文化</h3>
-        <p>走讀街巷、市場與聚落<br>從在地飲食認識生活型態</p>
+        </div>
+        <div class="pillar-body">
+          <h3>飲食文化</h3>
+          <p class="pillar-desc"><span>走讀街巷、市場與聚落</span><span>從在地飲食認識生活型態</span></p>
+        </div>
       </article>
       <article class="pillar">
+        <span class="num" aria-hidden="true">02</span>
+        <div class="icon-wrap">
         <svg class="icon" viewBox="0 0 64 64" aria-hidden="true">
           <path d="M12 36 c6 -8 14 -8 20 -2 l8 6 c3 2 1 6 -2 6 l-10 -1" fill="#f7efdd" stroke="#3e7c59" stroke-width="3" stroke-linejoin="round"/>
           <path d="M52 36 c-6 -8 -14 -8 -20 -2" fill="none" stroke="#3e7c59" stroke-width="3"/>
           <path d="M8 44 l14 6 c6 2 12 2 18 0 l16 -8" fill="none" stroke="#3e7c59" stroke-width="3" stroke-linecap="round"/>
           <path d="M32 14 c-4 -6 -12 -4 -12 3 c0 6 12 12 12 12 s12 -6 12 -12 c0 -7 -8 -9 -12 -3z" fill="#e4572e"/>
         </svg>
-        <h3>社區照護</h3>
-        <p>連結生活情境與連續性照護<br>培養全人照護與跨職類合作</p>
+        </div>
+        <div class="pillar-body">
+          <h3>社區照護</h3>
+          <p class="pillar-desc"><span>連結生活情境與連續性照護</span><span>培養全人照護與跨職類合作</span></p>
+        </div>
       </article>
       <article class="pillar">
+        <span class="num" aria-hidden="true">03</span>
+        <div class="icon-wrap">
         <svg class="icon" viewBox="0 0 64 64" aria-hidden="true">
           <circle class="sun-glow" cx="32" cy="28" r="18" fill="#f1dfae"/>
           <circle cx="32" cy="28" r="10" fill="#d9a441"/>
           <g stroke="#d9a441" stroke-width="3" stroke-linecap="round"><path d="M32 6 v6 M32 44 v6 M10 28 h6 M48 28 h6 M16.5 12.5 l4 4 M43.5 43.5 l4 4 M16.5 43.5 l4 -4 M43.5 12.5 l-4 4"/></g>
           <path d="M14 56 q18 -10 36 0" fill="none" stroke="#3e7c59" stroke-width="3" stroke-linecap="round"/>
         </svg>
-        <h3>自我覺察</h3>
-        <p>透過正念練習與人生反思<br>探索專業、職涯、價值與使命</p>
+        </div>
+        <div class="pillar-body">
+          <h3>自我覺察</h3>
+          <p class="pillar-desc"><span>透過正念練習與人生反思</span><span>探索專業、職涯、價值與使命</span></p>
+        </div>
       </article>
     </div>
 
