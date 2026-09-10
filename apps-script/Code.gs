@@ -33,7 +33,7 @@ const LIMITS = {
 // "session"：各梯次分別計算名額；"total"：三梯次共用名額（需與 index.html 的 CONFIG.QUOTA_SCOPE 一致）
 const QUOTA_SCOPE = 'session';
 
-// 儀表板（dashboard.html）存取金鑰：請改成自訂字串；留空則不需金鑰即可查看名單
+// 儀表板（dashboard.html）存取金鑰：需與 dashboard.html 的 CONFIG.DASHBOARD_KEY 相同；兩者皆留空則不檢查
 const DASHBOARD_KEY = 'chimei360';
 
 // 表頭（總表與各梯次分頁相同）

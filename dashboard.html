@@ -142,12 +142,6 @@ tr.total td{font-weight:700;background:#fffaf0}
 .filters .count{font-size:.85rem;color:var(--ink-soft);margin-left:auto}
 
 /* 金鑰 */
-.lock{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
-.lock input{font:inherit;padding:.5rem .8rem;border-radius:10px;border:1.5px solid var(--line);min-width:220px}
-.lock input:focus{outline:none;border-color:var(--brick);box-shadow:0 0 0 3px rgba(180,67,47,.14)}
-.lock .hint{font-size:.82rem;color:var(--ink-soft);flex-basis:100%}
-
-.foot{margin-top:2rem;font-size:.8rem;color:var(--ink-muted);text-align:center}
 @media print{.top,.btn,.filters,.tooltip{display:none!important}body{background:#fff}.card,.kpi,.session-card{box-shadow:none}}
 </style>
 </head>
@@ -165,7 +159,7 @@ tr.total td{font-weight:700;background:#fffaf0}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7"/><path d="M21 3v6h-6"/></svg>
         重新整理
       </button>
-      <button class="btn" id="csvBtn" type="button" disabled title="需輸入金鑰後才可匯出名單">
+      <button class="btn" id="csvBtn" type="button" disabled title="名單資料載入後可匯出">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
         匯出名單 CSV
       </button>
@@ -201,18 +195,6 @@ tr.total td{font-weight:700;background:#fffaf0}
     </div>
   </section>
 
-  <!-- 需金鑰的區塊 -->
-  <section class="section" id="lockSection">
-    <div class="card">
-      <div class="section-title"><h2>報名名單與明細</h2><span class="sub">需輸入儀表板金鑰</span></div>
-      <div class="lock">
-        <input type="password" id="keyInput" placeholder="輸入儀表板金鑰" autocomplete="off">
-        <button class="btn solid" id="keyBtn" type="button">解鎖</button>
-        <span class="hint">金鑰設定於 Apps Script 的 <code>DASHBOARD_KEY</code>。解鎖後可查看每日報名趨勢、單位分佈、餐食統計與報名名單（不含身分證號、出生日期等敏感資料）。</span>
-      </div>
-    </div>
-  </section>
-
   <section class="section two" id="detailCharts" hidden>
     <div class="card">
       <div class="section-title"><h2>每日報名人數</h2><span class="sub" id="dailySub"></span></div>
@@ -238,7 +220,6 @@ tr.total td{font-weight:700;background:#fffaf0}
     </div>
   </section>
 
-  <p class="foot">資料來源：Google 試算表「活動報名資料」總表・每 60 秒自動更新・<span id="footTs"></span></p>
 </main>
 
 <div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
@@ -247,7 +228,8 @@ tr.total td{font-weight:700;background:#fffaf0}
 /* ---------------- 設定 ---------------- */
 const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
-  POLL_MS: 60000
+  POLL_MS: 60000,
+  DASHBOARD_KEY: "chimei360"   // 需與 Code.gs 的 DASHBOARD_KEY 相同；兩者皆留空則不檢查
 };
 const SESSIONS = [
   { key: "第一梯次", date: "115/10/17（六）–10/18（日）", short: "10/17–10/18" },
@@ -260,12 +242,9 @@ const IDENTITIES = [
   { key: "醫事職類PGY", limit: 9,  color: "var(--s-mpgy)",    hex: "#2f6db5" },
   { key: "臨床教師",    limit: 8,  color: "var(--s-teacher)", hex: "#c9880c" }
 ];
-const KEY_STORE = "tainan360_dashboard_key";
 const PER_SESSION_LIMIT = IDENTITIES.reduce((n, i) => n + i.limit, 0);
 
 let state = { counts: null, limits: null, quotaScope: "session", registrations: null, ts: null, unlocked: false, online: false };
-let dashKey = "";
-try { dashKey = sessionStorage.getItem(KEY_STORE) || ""; } catch(e){}
 
 /* ---------------- 工具 ---------------- */
 const $ = s => document.querySelector(s);
@@ -296,24 +275,18 @@ async function load(){
   $("#refreshBtn").disabled = true;
   try {
     let data;
-    if (dashKey){
-      const res = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "dashboard", key: dashKey }) });
-      data = await res.json();
-      if (data && data.ok && Array.isArray(data.registrations)){
-        state.unlocked = true;
-        notice(null);
-      } else {
-        state.unlocked = false;
-        if (data && data.error === "unauthorized"){
-          notice("error", "金鑰不正確，僅顯示名額統計。請重新輸入金鑰。");
-          try { sessionStorage.removeItem(KEY_STORE); } catch(e){}
-          dashKey = "";
-        } else {
-          notice("warn", "後端尚未支援名單查詢：請將最新的 <code>apps-script/Code.gs</code> 貼回 Apps Script，並以「新版本」重新部署後再試。目前僅顯示名額統計。");
-        }
-        data = await fetchCountsOnly();
-      }
+    const res = await fetch(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "dashboard", key: CONFIG.DASHBOARD_KEY || "" }) });
+    data = await res.json();
+    if (data && data.ok && Array.isArray(data.registrations)){
+      state.unlocked = true;
+      notice(null);
     } else {
+      state.unlocked = false;
+      if (data && data.error === "unauthorized"){
+        notice("error", "後端已設定 <code>DASHBOARD_KEY</code>，與本頁的 <code>CONFIG.DASHBOARD_KEY</code> 不一致，目前僅顯示名額統計。請在兩處填入相同金鑰，或將 Code.gs 的 <code>DASHBOARD_KEY</code> 留空。");
+      } else {
+        notice("warn", "後端尚未支援名單查詢：請將最新的 <code>apps-script/Code.gs</code> 貼回 Apps Script，並以「新版本」重新部署後再試。目前僅顯示名額統計。");
+      }
       data = await fetchCountsOnly();
     }
     if (!data || !data.ok) throw new Error("bad response");
@@ -347,7 +320,6 @@ function render(){
   renderStack();
   renderMatrix();
   renderDetail();
-  $("#footTs").textContent = state.ts ? "最後更新 " + state.ts.toLocaleString("zh-TW") : "";
   $("#scopeText").textContent = state.quotaScope === "total" ? "三梯次共用名額" : `每梯次名額 ${PER_SESSION_LIMIT} 人（UGY 8・PGY 10・醫事職類PGY 9・臨床教師 8）`;
 }
 
@@ -366,7 +338,7 @@ function renderKpis(){
     <div class="kpi" style="--k:var(--brick)"><div class="label">總報名人數</div><div class="value">${total}<small>／ ${totalLimit} 名</small></div><div class="foot">整體額滿率 ${pct}%</div></div>
     <div class="kpi" style="--k:var(--s-mpgy)"><div class="label">剩餘名額</div><div class="value">${Math.max(0, totalLimit - total)}<small>名</small></div><div class="foot">${SESSIONS.map(s => `${s.key.replace("梯次","")} ${Math.max(0, PER_SESSION_LIMIT - sessionTotal(s.key))}`).join("・")}</div></div>
     <div class="kpi" style="--k:var(--s-teacher)"><div class="label">已額滿的梯次身分</div><div class="value">${fullCells.length}<small>／ ${SESSIONS.length * IDENTITIES.length} 組</small></div><div class="foot">報名最踴躍：${busiest.key}（${sessionTotal(busiest.key)} 人）</div></div>
-    <div class="kpi" style="--k:var(--s-ugy)"><div class="label">素食人數</div><div class="value">${veg === null ? "－" : veg}<small>${veg === null ? "" : "人"}</small></div><div class="foot">${veg === null ? "解鎖後顯示餐食統計" : `占 ${vegPct}%・葷食 ${state.registrations.length - veg} 人`}</div></div>`;
+    <div class="kpi" style="--k:var(--s-ugy)"><div class="label">素食人數</div><div class="value">${veg === null ? "－" : veg}<small>${veg === null ? "" : "人"}</small></div><div class="foot">${veg === null ? "名單資料載入後顯示" : `占 ${vegPct}%・葷食 ${state.registrations.length - veg} 人`}</div></div>`;
 }
 
 function renderSessions(){
@@ -448,7 +420,6 @@ function renderMatrix(){
 /* ---------- 解鎖後的明細 ---------- */
 function renderDetail(){
   const on = state.unlocked && Array.isArray(state.registrations);
-  $("#lockSection").hidden = on;
   $("#detailCharts").hidden = !on;
   $("#rosterSection").hidden = !on;
   $("#csvBtn").disabled = !on;
@@ -548,16 +519,6 @@ $("#csvBtn").addEventListener("click", () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 });
-
-/* ---------- 金鑰 ---------- */
-$("#keyBtn").addEventListener("click", () => {
-  const v = $("#keyInput").value.trim();
-  if (!v) return;
-  dashKey = v;
-  try { sessionStorage.setItem(KEY_STORE, v); } catch(e){}
-  load();
-});
-$("#keyInput").addEventListener("keydown", e => { if (e.key === "Enter") $("#keyBtn").click(); });
 
 /* ---------- 提示框 ---------- */
 const tip = $("#tooltip");
