@@ -288,7 +288,7 @@ function doPost(e) {
     const rows = readMaster_(master);
     const counts = countsFromRows_(rows);
 
-    // 重複報名檢查（總表，跨所有梯次）：同一人只能報名一梯次一次
+    // 重複報名檢查（總表，跨所有梯次）：每人限報名一個梯次
     // 以「人事號」或「身分證號」任一相同即視為同一人
     for (const r of rows) {
       const sameEmp = String(r[COL['人事號'] - 1]).trim().toUpperCase() === empId.toUpperCase();
