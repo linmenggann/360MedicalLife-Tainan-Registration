@@ -1209,7 +1209,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
           <select id="session" name="session" required>
             <option value="" disabled selected>請選擇梯次</option>
           </select>
-          <span class="hint">每梯次 2 日，三梯次擇一報名。</span>
+          <span class="hint">每梯次 2 日，三梯次擇一。每人限報名一梯次一次，不可重複報名。</span>
           <span class="err">請選擇梯次。</span>
         </div>
         <div class="field">
@@ -1593,8 +1593,8 @@ async function submitRegistration(payload){
     if (remaining(payload.identity, payload.session) === 0) return { ok: false, error: "full" };
     let list = [];
     try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch(e){}
-    const dup = list.find(r => r.empId === payload.empId);
-    if (dup) return { ok: false, error: "duplicate", message: `此人事號已報名${dup.session}，如需修改請聯絡教學部（分機 57440）。` };
+    const dup = list.find(r => r.empId.toUpperCase() === payload.empId.toUpperCase() || r.nationalId === payload.nationalId);
+    if (dup) return { ok: false, error: "duplicate", message: `${dup.empId.toUpperCase() === payload.empId.toUpperCase() ? "此人事號" : "此身分證號"}已報名${dup.session}，每人限報名一梯次一次；如需更改梯次請聯絡教學部（分機 57440）。` };
     list.push({ ...payload, ts: new Date().toISOString() });
     localStorage.setItem(LS_KEY, JSON.stringify(list));
     return { ok: true };
@@ -1646,7 +1646,7 @@ document.getElementById("regForm").addEventListener("submit", async e => {
       msg.className = "form-msg error";
       const errMap = {
         full: "很抱歉，該梯次此身分名額已額滿，請改選其他梯次或洽教學部詢問候補。",
-        duplicate: "此人事號已完成報名，如需修改請聯絡教學部（分機 57440）。",
+        duplicate: "您已完成報名，每人限報名一梯次一次；如需更改梯次請聯絡教學部（分機 57440）。",
         invalid: "資料格式不正確，請檢查後重新送出。"
       };
       msg.textContent = (result && result.message) || errMap[result && result.error] || "送出失敗，請稍後再試或聯絡教學部。";

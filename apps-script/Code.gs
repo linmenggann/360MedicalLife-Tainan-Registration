@@ -288,12 +288,16 @@ function doPost(e) {
     const rows = readMaster_(master);
     const counts = countsFromRows_(rows);
 
-    // 重複人事號檢查（總表）
+    // 重複報名檢查（總表，跨所有梯次）：同一人只能報名一梯次一次
+    // 以「人事號」或「身分證號」任一相同即視為同一人
     for (const r of rows) {
-      if (String(r[COL['人事號'] - 1]).trim() === empId) {
+      const sameEmp = String(r[COL['人事號'] - 1]).trim().toUpperCase() === empId.toUpperCase();
+      const sameId = String(r[COL['身分證號'] - 1]).trim().toUpperCase() === nationalId;
+      if (sameEmp || sameId) {
+        const which = sameEmp ? '此人事號' : '此身分證號';
         return json_({
           ok: false, error: 'duplicate', counts: counts,
-          message: '此人事號已報名' + String(r[COL['梯次'] - 1]).trim() + '，如需修改請聯絡教學部（分機 57440）。'
+          message: which + '已報名' + String(r[COL['梯次'] - 1]).trim() + '，每人限報名一梯次一次；如需更改梯次請聯絡教學部（分機 57440）。'
         });
       }
     }
