@@ -297,7 +297,7 @@ function doPost(e) {
         const which = sameEmp ? '此人事號' : '此身分證號';
         return json_({
           ok: false, error: 'duplicate', counts: counts,
-          message: which + '已報名' + String(r[COL['梯次'] - 1]).trim() + '，每人限報名一梯次一次；如需更改梯次請聯絡教學部（分機 57440）。'
+          message: which + '已報名' + String(r[COL['梯次'] - 1]).trim() + '，每人限報名一個梯次；如需更改梯次請聯絡教學部（分機 57440）。'
         });
       }
     }
