@@ -1495,9 +1495,9 @@ function renderQuota(){
     return `
       <div class="quota-card ${left === 0 ? "is-full" : ""}" style="--q-color:${i.color}">
         <div class="q-name">${i.key}</div>
-        <div class="q-num"><b>${left}</b><span>／ ${i.limit} 名 尚可報名</span></div>
+        <div class="q-num"><b>${left}</b><span>名 尚可報名</span></div>
         <div class="bar"><i style="width:${pct}%"></i></div>
-        <div class="q-foot"><span>已報名 ${usedN} 人</span><span>限額 ${i.limit} 人</span></div>
+        <div class="q-foot"><span>已報名 ${usedN} 人</span></div>
         <div class="q-full"><span>額滿</span></div>
       </div>`;
   }).join("");
@@ -1515,7 +1515,7 @@ function renderQuota(){
     sel.innerHTML = `<option value="" disabled ${current ? "" : "selected"}>請選擇身分（顯示剩餘名額）</option>` +
       IDENTITIES.map(i => {
         const left = remaining(i.key, session);
-        const label = left > 0 ? `${i.key}（剩餘 ${left} 名／限額 ${i.limit} 名）` : `${i.key}（已額滿）`;
+        const label = left > 0 ? `${i.key}（剩餘 ${left} 名）` : `${i.key}（已額滿）`;
         return `<option value="${i.key}" ${left === 0 ? "disabled" : ""} ${current === i.key && left > 0 ? "selected" : ""}>${label}</option>`;
       }).join("");
   }
