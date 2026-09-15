@@ -51,15 +51,39 @@ const DASHBOARD_KEY = 'chimei360';
 const CACHE_SECONDS = 20;
 
 // 表頭（總表與各梯次分頁相同）
-const HEADERS = ['報名時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱', '手機簡碼/分機', 'E-mail', '出生日期', '身分證號', '餐食'];
+const HEADERS = ['報名時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱', '手機簡碼/分機', 'E-mail', '出生日期', '身分證號', '餐食', '通知寄送時間'];
 const COL = {}; HEADERS.forEach((h, i) => COL[h] = i + 1);   // 1-based 欄位索引
 const TEXT_COLS = ['人事號', '手機簡碼/分機', '出生日期', '身分證號'];   // 以純文字儲存，避免 0 開頭或日期被自動轉換
-const COL_WIDTHS = [150, 90, 110, 140, 90, 90, 120, 130, 220, 110, 120, 70];
+const COL_WIDTHS = [150, 90, 110, 140, 90, 90, 120, 130, 220, 110, 120, 70, 150];
 
 // 公開統計試算表（由 setupStatsPublishing 建立，ID 存於指令碼屬性）
 const STATS_PROP = 'STATS_SPREADSHEET_ID';
 const STATS_SHEET = '統計';
 const STATS_TITLE = '360°醫學人生 報名統計（公開，不含個資）';
+
+/* ---- 報名成功／行前資訊通知信 ---- */
+const NOTIFY_ON_REGISTER = true;                 // 報名成功後立即寄送通知信
+const MAIL_SENDER_NAME = '奇美醫院教學部 林盟淦';   // 寄件人顯示名稱
+const MAIL_REPLY_TO = '910632@chimei.org.tw';    // 回覆信箱
+const MAIL_FROM_ALIAS = '';                      // 若 Gmail 已設定「以此地址寄件」別名（如 910632@chimei.org.tw）可填入；留空則用帳號本身
+const MAIL_SUBJECT_PREFIX = '【報名成功／行前資訊】360°醫學人生｜走進臺南，走進生活';
+const PDF_ATTACHMENT_NAME = '360°醫學人生｜走進臺南，走進生活行程v3.pdf';
+const PDF_DRIVE_FILE_ID = '';                    // 行程 PDF 的 Google 雲端硬碟檔案 ID（優先使用）；留空則由下列網址下載
+const PDF_URL = 'https://linmenggann.github.io/360MedicalLife-Tainan-Registration/assets/itinerary.pdf';
+const SESSION_LABELS = {
+  '第一梯次': '115 年 10 月 17 日(六)～10 月 18 日(日)',
+  '第二梯次': '115 年 11 月 21 日(六)～11 月 22 日(日)',
+  '第三梯次': '115 年 12 月 5 日(六)～12 月 6 日(日)'
+};
+const MEETING_TIME = '第一天 08:50～09:00｜第二天 09:20～09:30';
+const MEETING_PLACE = '奇美醫院 第一醫療大樓警衛室前方廣場（710 臺南市永康區中華路 901 號）';
+const SIGNATURE_LINES = [
+  '奇美醫療財團法人奇美醫院',
+  '教學部 林盟淦 教學行政管理員',
+  '電話：06-2812811分機57440',
+  'Email：910632@chimei.org.tw',
+  '地址：71004台南市永康區中華路901號'
+];
 
 /* ------------------------------------------------------------------ */
 /* 試算表工具                                                          */
@@ -130,6 +154,9 @@ function onOpen() {
     .addItem('立即更新公開統計', 'publishStats')
     .addItem('統計試算表設為連結可檢視', 'shareStatsSpreadsheet')
     .addItem('清除快取', 'clearCache_')
+    .addSeparator()
+    .addItem('預覽通知信（寄給自己）', 'previewNotificationEmail')
+    .addItem('補寄尚未通知的報名者', 'sendPendingNotifications')
     .addToUi();
 }
 
@@ -321,8 +348,9 @@ function doPost(e) {
       nationalId,
       String(d.meal).trim()
     ];
-    appendRow_(master, row);
-    appendRow_(getSheet_(session), row);
+    const sessionSheet = getSheet_(session);
+    const masterRow = appendRow_(master, row);
+    const sessionRow = appendRow_(sessionSheet, row);
     SpreadsheetApp.flush();
     clearCache_();
 
@@ -330,18 +358,247 @@ function doPost(e) {
     // 更新公開統計（若已設定；失敗不影響報名）
     try { publishStats(); } catch (err) { Logger.log('publishStats 失敗：' + err); }
 
-    return json_({ ok: true, counts: counts });
+    // 寄送報名成功／行前資訊通知信（失敗不影響報名，可事後用 sendPendingNotifications 補寄）
+    let notified = false;
+    if (NOTIFY_ON_REGISTER) {
+      try {
+        sendNotificationEmail_(rowToReg_(row));
+        const stamp = new Date();
+        master.getRange(masterRow, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+        sessionSheet.getRange(sessionRow, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+        notified = true;
+      } catch (err) {
+        Logger.log('通知信寄送失敗（' + String(d.email) + '）：' + err);
+      }
+    }
+
+    return json_({ ok: true, counts: counts, notified: notified });
   } finally {
     lock.releaseLock();
   }
 }
 
-/** 寫入一列，文字欄位先設為純文字格式，避免自動轉換 */
+/** 寫入一列，文字欄位先設為純文字格式，避免自動轉換；回傳列號 */
 function appendRow_(sheet, row) {
   const r = sheet.getLastRow() + 1;
   TEXT_COLS.forEach(h => sheet.getRange(r, COL[h]).setNumberFormat('@'));
   sheet.getRange(r, COL['報名時間']).setNumberFormat('yyyy/MM/dd HH:mm:ss');
   sheet.getRange(r, 1, 1, row.length).setValues([row]);
+  return r;
+}
+
+/* ------------------------------------------------------------------ */
+/* 報名成功／行前資訊通知信                                            */
+/* ------------------------------------------------------------------ */
+
+/** 試算表資料列 → 通知信所需欄位 */
+function rowToReg_(row) {
+  return {
+    session: String(row[COL['梯次'] - 1]).trim(),
+    identity: String(row[COL['身分'] - 1]).trim(),
+    unit: String(row[COL['單位'] - 1]).trim(),
+    name: String(row[COL['姓名'] - 1]).trim(),
+    empId: String(row[COL['人事號'] - 1]).trim(),
+    title: String(row[COL['職稱'] - 1]).trim(),
+    email: String(row[COL['E-mail'] - 1]).trim(),
+    meal: String(row[COL['餐食'] - 1]).trim()
+  };
+}
+
+function esc_(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/** 產生通知信的主旨、純文字與 HTML 內容 */
+function buildNotificationEmail_(reg) {
+  const sessionLabel = SESSION_LABELS[reg.session] || reg.session;
+  const subject = MAIL_SUBJECT_PREFIX + '（' + reg.session + '）';
+
+  const day1 = [
+    ['08:50–09:00', '集合'],
+    ['09:30–11:00', '城市經典｜老派台南的神級日常 × 散步導覽（含導覽點心）'],
+    ['11:30–12:40', '午宴：府城食府 新仁店'],
+    ['13:30–14:30', '四草綠色隧道巡河之旅（遊船）'],
+    ['15:00–16:00', '安平徒步導覽'],
+    ['16:00–17:00', '賦歸']
+  ];
+  const day2 = [
+    ['09:20–09:30', '集合'],
+    ['10:30–12:30', '菁寮老街百年聚落導覽＆手作傳統米食（手作紅龜粿）'],
+    ['12:30–13:30', '午宴：俗女餐桌'],
+    ['14:30–17:00', '大崎聚落散策＋村落特色 DIY 二擇一'],
+    ['17:00–18:00', '賦歸']
+  ];
+  const notes = [
+    '請依集合時間準時報到上車，逾時不候。',
+    '行程含旅行責任保險、午宴、遊船與 DIY 體驗，餐食依報名資料安排（' + reg.meal + '）。',
+    '建議穿著輕便服裝與好走的鞋，並自備水壺、帽子、防曬及雨具。',
+    '若您因故無法參加，敬請提前致電教學部林盟淦（分機 57440），以利候補同仁遞補參與，謝謝。',
+    '完整行程請見附件「' + PDF_ATTACHMENT_NAME + '」。'
+  ];
+
+  // ---- 純文字 ----
+  const t = [];
+  t.push(reg.name + ' 您好，');
+  t.push('');
+  t.push('恭喜您已成功報名「360°醫學人生｜走進臺南，走進生活」' + reg.session + '，活動相關資訊如下，敬請預留時間準時出席：');
+  t.push('');
+  t.push('【報名資料】');
+  t.push('梯次：' + reg.session + '（' + sessionLabel + '）');
+  t.push('身分：' + reg.identity);
+  t.push('單位／職稱：' + reg.unit + '／' + reg.title);
+  t.push('餐食：' + reg.meal);
+  t.push('');
+  t.push('【活動資訊】');
+  t.push('日期：' + sessionLabel);
+  t.push('集合時間：' + MEETING_TIME);
+  t.push('集合地點：' + MEETING_PLACE);
+  t.push('');
+  t.push('【兩日行程】');
+  t.push('Day 1｜台南老城・安平');
+  day1.forEach(x => t.push('  ' + x[0] + '｜' + x[1]));
+  t.push('Day 2｜台南後壁菁寮・官田大崎');
+  day2.forEach(x => t.push('  ' + x[0] + '｜' + x[1]));
+  t.push('');
+  t.push('【注意事項】');
+  notes.forEach(n => t.push('・' + n));
+  t.push('');
+  t.push('');
+  t.push('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
+  SIGNATURE_LINES.forEach(l => t.push(l));
+  t.push('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
+  const text = t.join('\n');
+
+  // ---- HTML ----
+  const li = arr => arr.map(x => '<tr><td style="padding:3px 10px 3px 0;white-space:nowrap;color:#8a2f22;font-weight:bold">' + esc_(x[0]) + '</td><td style="padding:3px 0">' + esc_(x[1]) + '</td></tr>').join('');
+  const html =
+    '<div style="font-family:微軟正黑體,Microsoft JhengHei,PingFang TC,sans-serif;font-size:15px;line-height:1.7;color:#2b2a28;max-width:720px">' +
+    '<div style="border-left:6px solid #b4432f;padding:6px 14px;margin-bottom:16px;background:#fbf7ee">' +
+    '<div style="font-size:14px;color:#8a2f22;letter-spacing:.1em">奇美醫院教學部</div>' +
+    '<div style="font-size:24px;font-weight:bold;color:#1f3a3d">360°醫學人生｜走進臺南，走進生活</div>' +
+    '<div style="font-size:16px;color:#b4432f;font-weight:bold">報名成功通知 &amp; 行前資訊 📢</div>' +
+    '</div>' +
+    '<p><b>' + esc_(reg.name) + '</b> 您好，</p>' +
+    '<p>恭喜您已成功報名「<b>360°醫學人生｜走進臺南，走進生活</b>」<b style="color:#b4432f">' + esc_(reg.session) + '</b>，活動相關資訊如下，敬請預留時間準時出席：</p>' +
+    '<h3 style="font-size:16px;color:#1f3a3d;border-bottom:2px solid #d9a441;padding-bottom:4px;margin:20px 0 8px">【報名資料】</h3>' +
+    '<table style="border-collapse:collapse;font-size:15px">' +
+    '<tr><td style="padding:3px 12px 3px 0;color:#5f5a53">梯次</td><td style="padding:3px 0"><b>' + esc_(reg.session) + '</b>（' + esc_(sessionLabel) + '）</td></tr>' +
+    '<tr><td style="padding:3px 12px 3px 0;color:#5f5a53">身分</td><td style="padding:3px 0">' + esc_(reg.identity) + '</td></tr>' +
+    '<tr><td style="padding:3px 12px 3px 0;color:#5f5a53">單位／職稱</td><td style="padding:3px 0">' + esc_(reg.unit) + '／' + esc_(reg.title) + '</td></tr>' +
+    '<tr><td style="padding:3px 12px 3px 0;color:#5f5a53">餐食</td><td style="padding:3px 0">' + esc_(reg.meal) + '</td></tr>' +
+    '</table>' +
+    '<h3 style="font-size:16px;color:#1f3a3d;border-bottom:2px solid #d9a441;padding-bottom:4px;margin:20px 0 8px">【活動資訊】</h3>' +
+    '<ul style="margin:0;padding-left:20px">' +
+    '<li><b>日期：</b><span style="color:#b4432f;font-weight:bold">' + esc_(sessionLabel) + '</span></li>' +
+    '<li><b>集合時間：</b>' + esc_(MEETING_TIME) + '</li>' +
+    '<li><b>集合地點：</b>' + esc_(MEETING_PLACE) + '</li>' +
+    '</ul>' +
+    '<h3 style="font-size:16px;color:#1f3a3d;border-bottom:2px solid #d9a441;padding-bottom:4px;margin:20px 0 8px">【兩日行程】</h3>' +
+    '<p style="margin:6px 0 2px"><b>Day 1｜台南老城・安平</b></p><table style="border-collapse:collapse;font-size:14px">' + li(day1) + '</table>' +
+    '<p style="margin:12px 0 2px"><b>Day 2｜台南後壁菁寮・官田大崎</b></p><table style="border-collapse:collapse;font-size:14px">' + li(day2) + '</table>' +
+    '<h3 style="font-size:16px;color:#1f3a3d;border-bottom:2px solid #d9a441;padding-bottom:4px;margin:20px 0 8px">【注意事項】</h3>' +
+    '<ul style="margin:0;padding-left:20px">' + notes.map(n => '<li>' + esc_(n) + '</li>').join('') + '</ul>' +
+    '<br><br>' +
+    '<div style="font-size:13px;color:#5f5a53;line-height:1.6">' +
+    '＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝<br>' +
+    SIGNATURE_LINES.map(esc_).join('<br>') + '<br>' +
+    '＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝' +
+    '</div></div>';
+
+  return { subject: subject, text: text, html: html };
+}
+
+/** 取得行程 PDF 附件（優先雲端硬碟檔案，否則由網址下載） */
+function getItineraryPdfBlob_() {
+  let blob;
+  if (PDF_DRIVE_FILE_ID) {
+    blob = DriveApp.getFileById(PDF_DRIVE_FILE_ID).getBlob();
+  } else {
+    const res = UrlFetchApp.fetch(PDF_URL, { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error('無法下載行程 PDF：HTTP ' + res.getResponseCode());
+    blob = res.getBlob();
+  }
+  return blob.setName(PDF_ATTACHMENT_NAME).setContentType('application/pdf');
+}
+
+/** 寄出一封通知信 */
+function sendNotificationEmail_(reg, overrideTo) {
+  const to = overrideTo || reg.email;
+  if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error('E-mail 格式不正確：' + to);
+  const mail = buildNotificationEmail_(reg);
+  const opts = {
+    name: MAIL_SENDER_NAME,
+    replyTo: MAIL_REPLY_TO,
+    htmlBody: mail.html,
+    attachments: [getItineraryPdfBlob_()]
+  };
+  if (MAIL_FROM_ALIAS) opts.from = MAIL_FROM_ALIAS;
+  GmailApp.sendEmail(to, mail.subject, mail.text, opts);
+}
+
+/**
+ * 預覽：把通知信寄到「自己的信箱」（執行者的 Google 帳號），內容用總表第一筆報名資料；
+ * 若尚無報名資料則用範例資料。不會寄給報名者，也不會標記寄送時間。
+ */
+function previewNotificationEmail() {
+  const rows = readMaster_(getSheet_(MASTER_SHEET));
+  const reg = rows.length ? rowToReg_(rows[0]) : {
+    session: '第一梯次', identity: '西醫PGY', unit: '內科部', name: '王小明', empId: '000000',
+    title: '住院醫師', email: 'sample@chimei.org.tw', meal: '葷食'
+  };
+  const me = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail();
+  sendNotificationEmail_(reg, me);
+  const msg = '預覽信已寄到 ' + me + '（內容為：' + reg.name + '／' + reg.session + '）';
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+}
+
+/**
+ * 補寄：對總表中「通知寄送時間」為空的報名者寄送通知信，並在總表與梯次分頁標記時間。
+ * 可重複執行，已寄過的不會再寄。
+ */
+function sendPendingNotifications() {
+  const master = getSheet_(MASTER_SHEET);
+  const last = master.getLastRow();
+  if (last < 2) { Logger.log('沒有報名資料'); return; }
+  const values = master.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  let sent = 0, failed = 0;
+  const pdfCheck = getItineraryPdfBlob_();   // 先確認附件可取得
+  if (!pdfCheck) throw new Error('無法取得附件');
+  values.forEach((row, i) => {
+    const r = i + 2;
+    if (String(row[COL['姓名'] - 1]).trim() === '') return;
+    if (row[COL['通知寄送時間'] - 1]) return;   // 已寄過
+    const reg = rowToReg_(row);
+    try {
+      sendNotificationEmail_(reg);
+      const stamp = new Date();
+      master.getRange(r, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+      markSessionNotified_(reg, stamp);
+      sent++;
+    } catch (err) {
+      failed++;
+      Logger.log('寄送失敗 ' + reg.name + ' <' + reg.email + '>：' + err);
+    }
+  });
+  const msg = '通知信補寄完成：成功 ' + sent + ' 封，失敗 ' + failed + ' 封（詳見執行紀錄）';
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+}
+
+/** 在梯次分頁找到同一人事號的列，標記通知寄送時間 */
+function markSessionNotified_(reg, stamp) {
+  const sheet = ss_().getSheetByName(reg.session);
+  if (!sheet) return;
+  const last = sheet.getLastRow();
+  if (last < 2) return;
+  const ids = sheet.getRange(2, COL['人事號'], last - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === reg.empId) {
+      sheet.getRange(i + 2, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+      return;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */

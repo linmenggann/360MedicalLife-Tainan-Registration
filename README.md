@@ -69,6 +69,26 @@ apps-script/Code.gs     Google Apps Script 後端（名額即時統計、寫入 
 
 試算表選單「報名系統」提供「初始化分頁與表頭」與「顯示各梯次名額統計」兩個功能（重新整理試算表後出現）。
 
+## 報名成功／行前資訊通知信
+
+報名成功後，Apps Script 會立即寄一封「報名成功通知 & 行前資訊」到報名者的 E-mail，附上行程 PDF，
+並在總表與該梯次分頁的「通知寄送時間」欄記錄時間。相關設定都在 `Code.gs` 開頭的「通知信」區塊：
+
+| 常數 | 說明 |
+|---|---|
+| `NOTIFY_ON_REGISTER` | `true` 報名成功後立即寄送；`false` 只用手動補寄 |
+| `MAIL_SENDER_NAME` / `MAIL_REPLY_TO` | 寄件人顯示名稱與回覆信箱（回覆會寄到 910632@chimei.org.tw） |
+| `MAIL_FROM_ALIAS` | 若 Gmail 已在「設定 → 帳戶 → 以這個地址寄送郵件」加入院內信箱，填入後寄件人即顯示該信箱；否則以 Google 帳號寄出 |
+| `PDF_DRIVE_FILE_ID` / `PDF_URL` | 附件來源：優先雲端硬碟檔案，留空則從 GitHub Pages 下載 `assets/itinerary.pdf` |
+| `SESSION_LABELS`、`MEETING_TIME`、`MEETING_PLACE`、`SIGNATURE_LINES` | 信中的日期、集合資訊與簽名檔 |
+
+試算表選單「報名系統」提供：
+- **預覽通知信（寄給自己）**：用總表第一筆資料（沒有資料則用範例）寄一封到執行者自己的信箱，確認版面與附件。
+- **補寄尚未通知的報名者**：對「通知寄送時間」為空的報名者寄信並標記時間，已寄過的不會重複。
+
+第一次執行會要求 Gmail 與雲端硬碟授權。Gmail 每日寄信額度（一般帳號 100 封／日）足以涵蓋三梯次名額。
+若要停止自動寄信，把 `NOTIFY_ON_REGISTER` 改為 `false` 並重新部署。
+
 ## 報名現況儀表板（dashboard.html）
 
 - 顯示：總報名人數與額滿率、各梯次各身分的報名進度、梯次 × 身分堆疊圖、名額一覽表、
