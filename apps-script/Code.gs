@@ -32,8 +32,8 @@ const MASTER_SHEET = '活動報名資料';
 const SESSIONS = ['第一梯次', '第二梯次', '第三梯次'];
 const SESSION_DATES = {
   '第一梯次': '115/10/17–10/18',
-  '第二梯次': '115/11/21–11/22',
-  '第三梯次': '115/12/5–12/6'
+  '第二梯次': '115/11/14–11/15',
+  '第三梯次': '115/11/21–11/22'
 };
 const LIMITS = {
   '西醫UGY': 8,
@@ -67,13 +67,13 @@ const MAIL_SENDER_NAME = '奇美醫院教學部 林盟淦';   // 寄件人顯示
 const MAIL_REPLY_TO = '910632@chimei.org.tw';    // 回覆信箱
 const MAIL_FROM_ALIAS = '';                      // 若 Gmail 已設定「以此地址寄件」別名（如 910632@chimei.org.tw）可填入；留空則用帳號本身
 const MAIL_SUBJECT_PREFIX = '【報名成功／行前資訊】360°醫學人生｜走進臺南，走進生活';
-const PDF_ATTACHMENT_NAME = '360°醫學人生｜走進臺南，走進生活行程v3.pdf';
+const PDF_ATTACHMENT_NAME = '360°醫學人生｜走進臺南，走進生活行程v4.pdf';
 const PDF_DRIVE_FILE_ID = '';                    // 行程 PDF 的 Google 雲端硬碟檔案 ID（優先使用）；留空則由下列網址下載
 const PDF_URL = 'https://linmenggann.github.io/360MedicalLife-Tainan-Registration/assets/itinerary.pdf';
 const SESSION_LABELS = {
   '第一梯次': '115 年 10 月 17 日(六)～10 月 18 日(日)',
-  '第二梯次': '115 年 11 月 21 日(六)～11 月 22 日(日)',
-  '第三梯次': '115 年 12 月 5 日(六)～12 月 6 日(日)'
+  '第二梯次': '115 年 11 月 14 日(六)～11 月 15 日(日)',
+  '第三梯次': '115 年 11 月 21 日(六)～11 月 22 日(日)'
 };
 const MEETING_TIME = '第一天 08:50～09:00｜第二天 09:20～09:30';
 const MEETING_PLACE = '奇美醫院 第一醫療大樓警衛室前方廣場（710 臺南市永康區中華路 901 號）';
