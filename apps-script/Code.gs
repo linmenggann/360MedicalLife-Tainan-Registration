@@ -355,24 +355,46 @@ function doPost(e) {
     clearCache_();
 
     counts[session][identity]++;
-    // 更新公開統計（若已設定；失敗不影響報名）
-    try { publishStats(); } catch (err) { Logger.log('publishStats 失敗：' + err); }
 
-    // 寄送報名成功／行前資訊通知信（失敗不影響報名，可事後用 sendPendingNotifications 補寄）
-    let notified = false;
+    // 通知信與公開統計改為背景作業（約一分鐘內執行），讓報名立即回覆
+    const queued = scheduleBackgroundJob_();
+
+    return json_({ ok: true, counts: counts, queued: queued });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 背景作業：寄通知信、更新公開統計                                    */
+/* ------------------------------------------------------------------ */
+const BACKGROUND_JOB = 'processRegistrationQueue';
+
+/** 建立一次性的時間觸發器（若已有待執行的就不重複建立） */
+function scheduleBackgroundJob_() {
+  try {
+    const pending = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === BACKGROUND_JOB);
+    if (!pending) ScriptApp.newTrigger(BACKGROUND_JOB).timeBased().after(1000).create();
+    return true;
+  } catch (err) {
+    Logger.log('無法建立背景作業觸發器：' + err);
+    return false;
+  }
+}
+
+/** 背景作業本體：刪除自己的一次性觸發器 → 補寄通知信 → 更新公開統計 */
+function processRegistrationQueue() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === BACKGROUND_JOB)
+    .forEach(t => { try { ScriptApp.deleteTrigger(t); } catch (e) {} });
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) { Logger.log('背景作業：取得鎖定逾時，下次再試'); scheduleBackgroundJob_(); return; }
+  try {
     if (NOTIFY_ON_REGISTER) {
-      try {
-        sendNotificationEmail_(rowToReg_(row));
-        const stamp = new Date();
-        master.getRange(masterRow, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
-        sessionSheet.getRange(sessionRow, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
-        notified = true;
-      } catch (err) {
-        Logger.log('通知信寄送失敗（' + String(d.email) + '）：' + err);
-      }
+      try { sendPendingNotifications(); } catch (err) { Logger.log('背景寄信失敗：' + err); }
     }
-
-    return json_({ ok: true, counts: counts, notified: notified });
+    try { publishStats(); } catch (err) { Logger.log('publishStats 失敗：' + err); }
   } finally {
     lock.releaseLock();
   }
@@ -521,8 +543,8 @@ function getItineraryPdfBlob_() {
   return blob.setName(PDF_ATTACHMENT_NAME).setContentType('application/pdf');
 }
 
-/** 寄出一封通知信 */
-function sendNotificationEmail_(reg, overrideTo) {
+/** 寄出一封通知信（pdfBlob 可預先取得後重複使用，避免每封信都重新下載附件） */
+function sendNotificationEmail_(reg, overrideTo, pdfBlob) {
   const to = overrideTo || reg.email;
   if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error('E-mail 格式不正確：' + to);
   const mail = buildNotificationEmail_(reg);
@@ -530,7 +552,7 @@ function sendNotificationEmail_(reg, overrideTo) {
     name: MAIL_SENDER_NAME,
     replyTo: MAIL_REPLY_TO,
     htmlBody: mail.html,
-    attachments: [getItineraryPdfBlob_()]
+    attachments: [pdfBlob || getItineraryPdfBlob_()]
   };
   if (MAIL_FROM_ALIAS) opts.from = MAIL_FROM_ALIAS;
   GmailApp.sendEmail(to, mail.subject, mail.text, opts);
@@ -562,16 +584,15 @@ function sendPendingNotifications() {
   const last = master.getLastRow();
   if (last < 2) { Logger.log('沒有報名資料'); return; }
   const values = master.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  const pendingRows = values.map((row, i) => ({ row, r: i + 2 }))
+    .filter(x => String(x.row[COL['姓名'] - 1]).trim() !== '' && !x.row[COL['通知寄送時間'] - 1]);
+  if (!pendingRows.length) { Logger.log('沒有待寄的通知信'); return; }
   let sent = 0, failed = 0;
-  const pdfCheck = getItineraryPdfBlob_();   // 先確認附件可取得
-  if (!pdfCheck) throw new Error('無法取得附件');
-  values.forEach((row, i) => {
-    const r = i + 2;
-    if (String(row[COL['姓名'] - 1]).trim() === '') return;
-    if (row[COL['通知寄送時間'] - 1]) return;   // 已寄過
+  const pdfBlob = getItineraryPdfBlob_();   // 附件只下載一次，所有信件共用
+  pendingRows.forEach(({ row, r }) => {
     const reg = rowToReg_(row);
     try {
-      sendNotificationEmail_(reg);
+      sendNotificationEmail_(reg, null, pdfBlob);
       const stamp = new Date();
       master.getRange(r, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
       markSessionNotified_(reg, stamp);

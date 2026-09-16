@@ -1364,7 +1364,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
   <div class="modal-card">
     <div class="seal">報名<br>完成</div>
     <h3 id="successTitle">報名成功！</h3>
-    <p>感謝您的報名，教學部將以 E-mail 通知行前資訊。</p>
+    <p>感謝您的報名，報名成功通知與行前資訊（含行程 PDF）將於約一分鐘內寄至您的 E-mail，請留意收信。</p>
     <div class="summary" id="successSummary"></div>
     <p style="font-size:.85rem">集合｜第一天 08:50–09:00・第二天 09:20–09:30<br>地點｜第一醫療大樓警衛室前方廣場</p>
     <button class="btn btn-primary" id="closeModal" type="button" style="margin-top:.6rem">關閉</button>
@@ -1634,8 +1634,14 @@ async function submitRegistration(payload){
 
 document.getElementById("regForm").addEventListener("submit", async e => {
   e.preventDefault();
-  await fetchCounts(); // 送出前先更新名額
+  // 按下即回饋：先鎖定按鈕，不再於送出前重新讀取名額（後端會再檢查）
+  const submitBtn = document.getElementById("submitBtn");
+  const submitBtnHtml = submitBtn.innerHTML;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "檢查中…";
   if (!validateForm()){
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = submitBtnHtml;
     const first = document.querySelector(".field.invalid, .form-msg.error");
     if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
