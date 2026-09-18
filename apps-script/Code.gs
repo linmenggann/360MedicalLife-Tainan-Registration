@@ -615,7 +615,7 @@ function markSessionNotified_(reg, stamp) {
   if (last < 2) return;
   const ids = sheet.getRange(2, COL['人事號'], last - 1, 1).getValues();
   for (let i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() === reg.empId) {
+    if (String(ids[i][0]).trim().toUpperCase() === String(reg.empId).trim().toUpperCase()) {
       sheet.getRange(i + 2, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
       return;
     }
