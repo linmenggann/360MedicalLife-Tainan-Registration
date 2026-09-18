@@ -677,20 +677,54 @@ function renderRoster(){
 ["fSession","fIdentity","fMeal"].forEach(id => $("#" + id).addEventListener("change", renderRoster));
 $("#fSearch").addEventListener("input", renderRoster);
 
-/* ---------- CSV 匯出（不含敏感欄位） ---------- */
-$("#csvBtn").addEventListener("click", () => {
-  if (!state.registrations) return;
-  const rows = filteredRoster();
-  const head = ["報名時間","梯次","身分","單位","姓名","人事號","職稱","餐食"];
-  const csv = [head].concat(rows.map(r => { const d = new Date(r.ts); return [isNaN(d) ? r.ts : d.toLocaleString("zh-TW"), r.session, r.identity, r.unit, r.name, r.empId, r.title, r.meal]; }))
-    .map(line => line.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+/* ---------- CSV 匯出（不含敏感欄位；Excel 開啟不轉換人事號） ---------- */
+// Excel 開啟 CSV 會自動轉換「看起來像數字、科學記號、日期」的字串：8607E7 → 8.61E+10、0912 → 912。
+// 人事號一律、其他欄位遇到可能被轉換的值時，輸出成 ="值"，Excel 會當成文字原樣顯示。
+// 以 = + - @ 開頭的值加前置撇號，避免被 Excel 當成公式執行。
+const CSV_HEAD = ["報名時間","梯次","身分","單位","姓名","人事號","職稱","餐食"];
+const CSV_FORCE_TEXT = new Set(["人事號"]);
+const EXCEL_COERCIBLE = /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?%?\s*$|^\s*0\d|^\s*\d{1,4}[-\/.]\d{1,2}([-\/.]\d{1,4})?\s*$|^\s*\d{1,2}:\d{2}/;
+function csvCell(v, forceText){
+  let s = String(v ?? "");
+  if (forceText || EXCEL_COERCIBLE.test(s)) s = '="' + s.replace(/"/g, '""') + '"';
+  else if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+function buildRosterCsv(rows){
+  const body = rows.map(r => {
+    const d = new Date(r.ts);
+    return [isNaN(d) ? r.ts : d.toLocaleString("zh-TW"), r.session, r.identity, r.unit, r.name, r.empId, r.title, r.meal];
+  });
+  const lines = [CSV_HEAD.map(h => csvCell(h, false)).join(",")]
+    .concat(body.map(line => line.map((v, i) => csvCell(v, CSV_FORCE_TEXT.has(CSV_HEAD[i]))).join(",")));
+  return "﻿" + lines.join("\r\n");   // BOM：讓 Excel 以 UTF-8 讀取中文
+}
+function downloadCsv(text, filename){
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `報名名單_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+$("#csvBtn").addEventListener("click", () => {
+  if (!state.registrations) return;
+  downloadCsv(buildRosterCsv(filteredRoster()), `報名名單_${new Date().toISOString().slice(0, 10)}.csv`);
 });
+/* 驗收測試：網址加上 ?csvtest=1 會出現「下載 CSV 驗收檔」，內含人事號 8607E7 與 B41242 兩筆測試資料 */
+if (new URLSearchParams(location.search).get("csvtest") === "1"){
+  const btn = document.createElement("button");
+  btn.className = "btn"; btn.type = "button"; btn.textContent = "下載 CSV 驗收檔";
+  btn.addEventListener("click", () => {
+    const now = new Date().toISOString();
+    const t = { ts: now, session: "第一梯次", identity: "臨床教師", unit: "驗收測試", title: "測試", meal: "葷食" };
+    downloadCsv(buildRosterCsv([
+      Object.assign({}, t, { name: "驗收測試A", empId: "8607E7" }),
+      Object.assign({}, t, { name: "驗收測試B", empId: "B41242" })
+    ]), "CSV驗收測試_8607E7_B41242.csv");
+  });
+  $("#csvBtn").after(btn);
+}
 
 /* ---------- 提示框 ---------- */
 const tip = $("#tooltip");
