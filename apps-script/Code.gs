@@ -51,10 +51,10 @@ const DASHBOARD_KEY = 'chimei360';
 const CACHE_SECONDS = 20;
 
 // 表頭（總表與各梯次分頁相同）
-const HEADERS = ['報名時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱', '手機簡碼/分機', 'E-mail', '出生日期', '身分證號', '餐食', '通知寄送時間'];
+const HEADERS = ['報名時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱', '手機簡碼/分機', 'E-mail', '出生日期', '身分證號', '餐食', '通知寄送時間', '備註'];
 const COL = {}; HEADERS.forEach((h, i) => COL[h] = i + 1);   // 1-based 欄位索引
 const TEXT_COLS = ['人事號', '手機簡碼/分機', '出生日期', '身分證號'];   // 以純文字儲存，避免 0 開頭或日期被自動轉換
-const COL_WIDTHS = [150, 90, 110, 140, 90, 90, 120, 130, 220, 110, 120, 70, 150];
+const COL_WIDTHS = [150, 90, 110, 140, 90, 90, 120, 130, 220, 110, 120, 70, 150, 220];
 
 // 公開統計試算表（由 setupStatsPublishing 建立，ID 存於指令碼屬性）
 const STATS_PROP = 'STATS_SPREADSHEET_ID';
@@ -157,6 +157,8 @@ function onOpen() {
     .addSeparator()
     .addItem('預覽通知信（寄給自己）', 'previewNotificationEmail')
     .addItem('補寄尚未通知的報名者', 'sendPendingNotifications')
+    .addSeparator()
+    .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
     .addToUi();
 }
 
@@ -388,11 +390,12 @@ function processRegistrationQueue() {
     .filter(t => t.getHandlerFunction() === BACKGROUND_JOB)
     .forEach(t => { try { ScriptApp.deleteTrigger(t); } catch (e) {} });
 
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) { Logger.log('背景作業：取得鎖定逾時，下次再試'); scheduleBackgroundJob_(); return; }
+  // 寄信用 UserLock，與報名寫入用的 ScriptLock 分開：寄信期間（下載附件、寄出多封）不會擋住新的報名
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(30000)) { Logger.log('背景作業：寄信作業忙碌中，稍後再試'); scheduleBackgroundJob_(); return; }
   try {
     if (NOTIFY_ON_REGISTER) {
-      try { sendPendingNotifications(); } catch (err) { Logger.log('背景寄信失敗：' + err); }
+      try { sendPending_(); } catch (err) { Logger.log('背景寄信失敗：' + err); }
     }
     try { publishStats(); } catch (err) { Logger.log('publishStats 失敗：' + err); }
   } finally {
@@ -580,13 +583,27 @@ function previewNotificationEmail() {
  * 可重複執行，已寄過的不會再寄。
  */
 function sendPendingNotifications() {
+  const lock = LockService.getUserLock();
+  let msg;
+  if (!lock.tryLock(60000)) {
+    msg = '另一個寄信作業正在執行，請稍後再試。';
+  } else {
+    try { msg = sendPending_().msg; } finally { lock.releaseLock(); }
+  }
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+}
+
+/** 寄送所有尚未通知的報名者（呼叫端需持有 UserLock）；回傳統計 */
+function sendPending_() {
   const master = getSheet_(MASTER_SHEET);
+  ensureExtraHeaders_();
   const last = master.getLastRow();
-  if (last < 2) { Logger.log('沒有報名資料'); return; }
+  if (last < 2) return { sent: 0, failed: 0, msg: '沒有報名資料' };
   const values = master.getRange(2, 1, last - 1, HEADERS.length).getValues();
   const pendingRows = values.map((row, i) => ({ row, r: i + 2 }))
     .filter(x => String(x.row[COL['姓名'] - 1]).trim() !== '' && !x.row[COL['通知寄送時間'] - 1]);
-  if (!pendingRows.length) { Logger.log('沒有待寄的通知信'); return; }
+  if (!pendingRows.length) return { sent: 0, failed: 0, msg: '沒有待寄的通知信' };
   let sent = 0, failed = 0;
   const pdfBlob = getItineraryPdfBlob_();   // 附件只下載一次，所有信件共用
   pendingRows.forEach(({ row, r }) => {
@@ -602,9 +619,150 @@ function sendPendingNotifications() {
       Logger.log('寄送失敗 ' + reg.name + ' <' + reg.email + '>：' + err);
     }
   });
-  const msg = '通知信補寄完成：成功 ' + sent + ' 封，失敗 ' + failed + ' 封（詳見執行紀錄）';
+  const msg = '通知信寄送完成：成功 ' + sent + ' 封，失敗 ' + failed + ' 封（詳見執行紀錄）';
   Logger.log(msg);
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+  return { sent: sent, failed: failed, msg: msg };
+}
+
+/** 補上後來新增的表頭欄（通知寄送時間、備註），既有資料不動 */
+function ensureExtraHeaders_() {
+  const extra = ['通知寄送時間', '備註'];
+  [MASTER_SHEET].concat(SESSIONS).forEach(name => {
+    const sheet = ss_().getSheetByName(name);
+    if (!sheet) return;
+    const head = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0].map(String);
+    extra.forEach(h => {
+      const c = COL[h];
+      if (head[c - 1].trim() === h) return;
+      sheet.getRange(1, c).setValue(h);
+      sheet.getRange(1, 1).copyFormatToRange(sheet, c, c, 1, 1);
+      sheet.setColumnWidth(c, COL_WIDTHS[c - 1]);
+    });
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* 管理者加報梯次（例外處理：同一人報名多個梯次）                      */
+/* ------------------------------------------------------------------ */
+
+/** 梯次輸入容錯：「2」「二」「第二梯次」都視為第二梯次 */
+function parseSessionInput_(text) {
+  const map = { '1': '第一梯次', '一': '第一梯次', '2': '第二梯次', '二': '第二梯次', '3': '第三梯次', '三': '第三梯次' };
+  return String(text || '').split(/[,，、;；\s]+/).map(s => s.trim()).filter(Boolean).map(s => {
+    if (SESSIONS.indexOf(s) !== -1) return s;
+    const m = s.replace(/^第/, '').replace(/梯次?$/, '');
+    return map[m] || s;
+  }).filter((s, i, a) => a.indexOf(s) === i);
+}
+
+function sameEmpId_(a, b) {
+  return String(a).trim().toUpperCase() === String(b).trim().toUpperCase();
+}
+
+/** 試算表選單：輸入人事號與要加報的梯次，確認後寫入並寄出通知信 */
+function adminAddSessionsDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const r1 = ui.prompt('管理者加報梯次', '請輸入已報名者的人事號：', ui.ButtonSet.OK_CANCEL);
+  if (r1.getSelectedButton() !== ui.Button.OK) return;
+  const empId = r1.getResponseText().trim();
+  if (!empId) return;
+
+  const mine = readMaster_(getSheet_(MASTER_SHEET)).filter(r => sameEmpId_(r[COL['人事號'] - 1], empId));
+  if (!mine.length) { ui.alert('總表找不到人事號「' + empId + '」的報名資料。\n管理者加報只能針對已報名過的同仁。'); return; }
+  const base = rowToReg_(mine[0]);
+  const has = mine.map(r => String(r[COL['梯次'] - 1]).trim());
+
+  const r2 = ui.prompt('管理者加報梯次',
+    base.name + '（' + base.empId + '／' + base.identity + '）目前已報名：' + has.join('、') +
+    '\n\n請輸入要加報的梯次，可輸入多個並以逗號分隔\n例如：第二梯次,第三梯次　或　2,3', ui.ButtonSet.OK_CANCEL);
+  if (r2.getSelectedButton() !== ui.Button.OK) return;
+  const targets = parseSessionInput_(r2.getResponseText());
+  if (!targets.length) return;
+
+  const ok = ui.alert('確認加報',
+    '將為 ' + base.name + '（' + base.empId + '／' + base.identity + '）加報：' + targets.join('、') +
+    '\n寄送地址：' + base.email +
+    '\n\n系統會略過「每人限報名一個梯次」的限制，但仍檢查各梯次名額；' +
+    '\n每個加報梯次會各寄一封報名成功／行前資訊通知信（附行程 PDF）。\n\n確定執行？', ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  const res = adminAddSessions(empId, targets);
+  ui.alert('管理者加報結果', res.message, ui.ButtonSet.OK);
+}
+
+/**
+ * 管理者加報：以總表中該人事號的報名資料為基礎，複製到指定梯次。
+ * 略過「每人限報名一個梯次」限制，但仍檢查名額；寫入總表與梯次分頁（備註欄標示管理者加報），
+ * 之後立即寄出通知信並更新公開統計。
+ */
+function adminAddSessions(empId, targetSessions) {
+  const added = [], skipped = [];
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  let name = '', shownId = String(empId).trim();
+  try {
+    const master = getSheet_(MASTER_SHEET);
+    const all = readMaster_(master);
+    const mine = all.filter(r => sameEmpId_(r[COL['人事號'] - 1], empId));
+    if (!mine.length) return { added, skipped, message: '總表找不到人事號「' + empId + '」的報名資料。' };
+    const baseRow = mine[0];
+    name = String(baseRow[COL['姓名'] - 1]).trim();
+    shownId = String(baseRow[COL['人事號'] - 1]).trim();
+    const identity = String(baseRow[COL['身分'] - 1]).trim();
+    const original = mine.map(r => String(r[COL['梯次'] - 1]).trim());
+    const has = original.slice();
+    const counts = countsFromRows_(all);
+    const tz = Session.getScriptTimeZone();
+
+    ensureExtraHeaders_();
+    targetSessions.forEach(s => {
+      if (SESSIONS.indexOf(s) === -1) { skipped.push(s + '（梯次名稱不正確）'); return; }
+      if (has.indexOf(s) !== -1) { skipped.push(s + '（已報名）'); return; }
+      if (usedCount_(counts, s, identity) >= LIMITS[identity]) { skipped.push(s + '（' + identity + '名額已滿）'); return; }
+
+      const row = baseRow.slice(0, HEADERS.length);
+      while (row.length < HEADERS.length) row.push('');
+      TEXT_COLS.forEach(h => {
+        const v = row[COL[h] - 1];
+        row[COL[h] - 1] = (v instanceof Date) ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v).trim();
+      });
+      row[COL['報名時間'] - 1] = new Date();
+      row[COL['梯次'] - 1] = s;
+      row[COL['通知寄送時間'] - 1] = '';
+      row[COL['備註'] - 1] = '管理者加報（原報名：' + original.join('、') + '）';
+
+      appendRow_(master, row);
+      appendRow_(getSheet_(s), row);
+      counts[s][identity]++;
+      has.push(s);
+      added.push(s);
+    });
+    SpreadsheetApp.flush();
+    clearCache_();
+  } finally {
+    lock.releaseLock();
+  }
+
+  let mailMsg = '';
+  if (added.length && NOTIFY_ON_REGISTER) {
+    const mailLock = LockService.getUserLock();
+    if (mailLock.tryLock(60000)) {
+      try { mailMsg = sendPending_().msg; } finally { mailLock.releaseLock(); }
+    } else {
+      scheduleBackgroundJob_();
+      mailMsg = '寄信作業忙碌中，已排入背景作業，約一分鐘內寄出。';
+    }
+  }
+  try { publishStats(); } catch (err) { Logger.log('publishStats 失敗：' + err); }
+
+  const lines = [];
+  lines.push(name + '（' + shownId + '）');
+  lines.push(added.length ? '已加報：' + added.join('、') : '沒有新增任何梯次。');
+  if (skipped.length) lines.push('略過：' + skipped.join('、'));
+  if (mailMsg) lines.push(mailMsg);
+  const message = lines.join('\n');
+  Logger.log(message);
+  return { added, skipped, message };
 }
 
 /** 在梯次分頁找到同一人事號的列，標記通知寄送時間 */
