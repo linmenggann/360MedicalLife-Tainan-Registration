@@ -53,7 +53,8 @@ const CACHE_SECONDS = 20;
 // 表頭（總表與各梯次分頁相同）
 const HEADERS = ['報名時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱', '手機簡碼/分機', 'E-mail', '出生日期', '身分證號', '餐食', '通知寄送時間', '備註'];
 const COL = {}; HEADERS.forEach((h, i) => COL[h] = i + 1);   // 1-based 欄位索引
-const TEXT_COLS = ['人事號', '手機簡碼/分機', '出生日期', '身分證號'];   // 以純文字儲存，避免 0 開頭或日期被自動轉換
+// 以文字儲存的欄位：寫入時加前置撇號（見 appendRow_），避免 8607E7 被當成科學記號、0 開頭被去掉、日期被自動轉換
+const TEXT_COLS = ['人事號', '手機簡碼/分機', '出生日期', '身分證號'];
 const COL_WIDTHS = [150, 90, 110, 140, 90, 90, 120, 130, 220, 110, 120, 70, 150, 220];
 
 // 公開統計試算表（由 setupStatsPublishing 建立，ID 存於指令碼屬性）
@@ -159,6 +160,8 @@ function onOpen() {
     .addItem('補寄尚未通知的報名者', 'sendPendingNotifications')
     .addSeparator()
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
+    .addSeparator()
+    .addItem('驗收測試：人事號不被轉成科學記號', 'testTextColumns')
     .addToUi();
 }
 
@@ -224,7 +227,7 @@ function registrationsFromRows_(rows) {
       identity: String(r[COL['身分'] - 1]).trim(),
       unit: String(r[COL['單位'] - 1]).trim(),
       name: String(r[COL['姓名'] - 1]).trim(),
-      empId: String(r[COL['人事號'] - 1]).trim(),
+      empId: txt_(r[COL['人事號'] - 1]),
       title: String(r[COL['職稱'] - 1]).trim(),
       meal: String(r[COL['餐食'] - 1]).trim()
     };
@@ -320,8 +323,8 @@ function doPost(e) {
     // 重複報名檢查（總表，跨所有梯次）：每人限報名一個梯次
     // 以「人事號」或「身分證號」任一相同即視為同一人
     for (const r of rows) {
-      const sameEmp = String(r[COL['人事號'] - 1]).trim().toUpperCase() === empId.toUpperCase();
-      const sameId = String(r[COL['身分證號'] - 1]).trim().toUpperCase() === nationalId;
+      const sameEmp = txt_(r[COL['人事號'] - 1]).toUpperCase() === empId.toUpperCase();
+      const sameId = txt_(r[COL['身分證號'] - 1]).toUpperCase() === nationalId;
       if (sameEmp || sameId) {
         const which = sameEmp ? '此人事號' : '此身分證號';
         return json_({
@@ -403,13 +406,84 @@ function processRegistrationQueue() {
   }
 }
 
-/** 寫入一列，文字欄位先設為純文字格式，避免自動轉換；回傳列號 */
+/** 讀取文字欄：去掉可能被保留成字面字元的前置撇號，並去除前後空白 */
+function txt_(v) {
+  return String(v == null ? '' : v).replace(/^'/, '').trim();
+}
+
+/**
+ * 寫入文字欄：一律加前置撇號，強制 Google 試算表存成文字。
+ * 例：8607E7 若不加撇號會被判讀為 8.607×10^10（顯示 8.607E+10），B41242 則原樣保留。
+ */
+function asSheetText_(v) {
+  const s = (v instanceof Date) ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : txt_(v);
+  return s === '' ? '' : "'" + s;
+}
+
+/**
+ * 寫入一列（報名、管理者加報都走這裡）；回傳列號。
+ * 1. 文字欄加前置撇號。
+ * 2. 寫入前先清除該列格式：欄位若已是「純文字」格式，撇號會被當成字面字元保留，所以要先回到自動格式。
+ * 3. 寫入後再把文字欄設為純文字格式，之後有人直接在試算表修改也不會被轉換。
+ */
 function appendRow_(sheet, row) {
   const r = sheet.getLastRow() + 1;
-  TEXT_COLS.forEach(h => sheet.getRange(r, COL[h]).setNumberFormat('@'));
+  const out = row.slice(0, HEADERS.length);
+  while (out.length < HEADERS.length) out.push('');
+  TEXT_COLS.forEach(h => { out[COL[h] - 1] = asSheetText_(out[COL[h] - 1]); });
+  const range = sheet.getRange(r, 1, 1, out.length);
+  range.clearFormat();
+  range.setValues([out]);
   sheet.getRange(r, COL['報名時間']).setNumberFormat('yyyy/MM/dd HH:mm:ss');
-  sheet.getRange(r, 1, 1, row.length).setValues([row]);
+  TEXT_COLS.forEach(h => sheet.getRange(r, COL[h]).setNumberFormat('@'));
   return r;
+}
+
+/**
+ * 驗收測試：人事號等文字欄不會被轉成科學記號、數字或日期。
+ * 在暫存分頁（與正式分頁相同的表頭與欄位格式）走正式的 appendRow_ 寫入，讀回比對後刪除暫存分頁。
+ * 測試案例：8607E7（會被誤判為科學記號）、B41242（英數混合對照組）；同列一併驗證 0 開頭手機、出生日期、身分證號。
+ */
+function testTextColumns() {
+  const ss = ss_();
+  const name = '_驗收測試_文字欄';
+  const old = ss.getSheetByName(name);
+  if (old) ss.deleteSheet(old);
+  const sheet = ensureSheet_(name);
+  const cases = [
+    { empId: '8607E7', phone: '0912345678', birth: '1985-03-04', nid: 'A123456789' },
+    { empId: 'B41242', phone: '57440',      birth: '1990-12-31', nid: 'B223456789' }
+  ];
+  const lines = [];
+  try {
+    cases.forEach(c => {
+      const row = new Array(HEADERS.length).fill('');
+      row[COL['報名時間'] - 1] = new Date();
+      row[COL['梯次'] - 1] = '第一梯次';
+      row[COL['身分'] - 1] = '臨床教師';
+      row[COL['姓名'] - 1] = '驗收測試';
+      row[COL['人事號'] - 1] = c.empId;
+      row[COL['手機簡碼/分機'] - 1] = c.phone;
+      row[COL['出生日期'] - 1] = c.birth;
+      row[COL['身分證號'] - 1] = c.nid;
+      const r = appendRow_(sheet, row);
+      SpreadsheetApp.flush();
+      const got = sheet.getRange(r, 1, 1, HEADERS.length).getValues()[0];
+      const shown = sheet.getRange(r, 1, 1, HEADERS.length).getDisplayValues()[0];
+      [['人事號', c.empId], ['手機簡碼/分機', c.phone], ['出生日期', c.birth], ['身分證號', c.nid]].forEach(([h, exp]) => {
+        const v = got[COL[h] - 1], d = shown[COL[h] - 1];
+        const pass = typeof v === 'string' && v === exp && d === exp;
+        lines.push((pass ? 'PASS' : 'FAIL') + '｜' + h + '｜輸入 ' + exp + '｜儲存值 ' + JSON.stringify(v) + '（' + typeof v + '）｜顯示 ' + d);
+      });
+    });
+  } finally {
+    ss.deleteSheet(sheet);
+  }
+  const allPass = lines.every(l => l.indexOf('PASS') === 0);
+  const msg = (allPass ? '驗收通過：文字欄沒有被轉換' : '驗收未通過：請將下列結果回報') + '\n\n' + lines.join('\n');
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+  return allPass;
 }
 
 /* ------------------------------------------------------------------ */
@@ -423,7 +497,7 @@ function rowToReg_(row) {
     identity: String(row[COL['身分'] - 1]).trim(),
     unit: String(row[COL['單位'] - 1]).trim(),
     name: String(row[COL['姓名'] - 1]).trim(),
-    empId: String(row[COL['人事號'] - 1]).trim(),
+    empId: txt_(row[COL['人事號'] - 1]),
     title: String(row[COL['職稱'] - 1]).trim(),
     email: String(row[COL['E-mail'] - 1]).trim(),
     meal: String(row[COL['餐食'] - 1]).trim()
@@ -656,7 +730,7 @@ function parseSessionInput_(text) {
 }
 
 function sameEmpId_(a, b) {
-  return String(a).trim().toUpperCase() === String(b).trim().toUpperCase();
+  return txt_(a).toUpperCase() === txt_(b).toUpperCase();
 }
 
 /** 試算表選單：輸入人事號與要加報的梯次，確認後寫入並寄出通知信 */
@@ -707,12 +781,11 @@ function adminAddSessions(empId, targetSessions) {
     if (!mine.length) return { added, skipped, message: '總表找不到人事號「' + empId + '」的報名資料。' };
     const baseRow = mine[0];
     name = String(baseRow[COL['姓名'] - 1]).trim();
-    shownId = String(baseRow[COL['人事號'] - 1]).trim();
+    shownId = txt_(baseRow[COL['人事號'] - 1]);
     const identity = String(baseRow[COL['身分'] - 1]).trim();
     const original = mine.map(r => String(r[COL['梯次'] - 1]).trim());
     const has = original.slice();
     const counts = countsFromRows_(all);
-    const tz = Session.getScriptTimeZone();
 
     ensureExtraHeaders_();
     targetSessions.forEach(s => {
@@ -720,12 +793,7 @@ function adminAddSessions(empId, targetSessions) {
       if (has.indexOf(s) !== -1) { skipped.push(s + '（已報名）'); return; }
       if (usedCount_(counts, s, identity) >= LIMITS[identity]) { skipped.push(s + '（' + identity + '名額已滿）'); return; }
 
-      const row = baseRow.slice(0, HEADERS.length);
-      while (row.length < HEADERS.length) row.push('');
-      TEXT_COLS.forEach(h => {
-        const v = row[COL[h] - 1];
-        row[COL[h] - 1] = (v instanceof Date) ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v).trim();
-      });
+      const row = baseRow.slice(0, HEADERS.length);   // 文字欄的撇號與日期轉文字由 appendRow_ 統一處理
       row[COL['報名時間'] - 1] = new Date();
       row[COL['梯次'] - 1] = s;
       row[COL['通知寄送時間'] - 1] = '';
@@ -773,7 +841,7 @@ function markSessionNotified_(reg, stamp) {
   if (last < 2) return;
   const ids = sheet.getRange(2, COL['人事號'], last - 1, 1).getValues();
   for (let i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim().toUpperCase() === String(reg.empId).trim().toUpperCase()) {
+    if (sameEmpId_(ids[i][0], reg.empId)) {
       sheet.getRange(i + 2, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
       return;
     }
