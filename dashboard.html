@@ -230,9 +230,9 @@ const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
   POLL_MS: 60000,
   DASHBOARD_KEY: "chimei360",   // 需與 Code.gs 的 DASHBOARD_KEY 相同；兩者皆留空則不檢查
-  FETCH_TIMEOUT_MS: 12000,      // Apps Script 逾時秒數，超過改用備援
+  FETCH_TIMEOUT_MS: 10000,      // Apps Script 逾時秒數，超過改用備援
   // 備援 1：公開統計試算表的 GViz 端點（即時）。ID 會自動由後端取得並記住；也可在此手動填入
-  STATS_SPREADSHEET_ID: "",
+  STATS_SPREADSHEET_ID: "1YAOD-_eKqRTBhFlqNv6iankT-seh4IRktsSWMSSRHiE",
   STATS_SHEET: "統計",
   // 備援 2：公開統計試算表「發布到網路」的 CSV 網址（約延遲數分鐘）
   STATS_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRENqd1xE3bGlyBYxRriGrghb2x3Q97jWBWpQHxe_6eyCNf3XvHV1aht4keHr-CPkNbc9HPWoKe93K5/pub?output=csv"
@@ -411,7 +411,19 @@ async function load(){
   $("#refreshBtn").disabled = true;
   if (state.counts) setStatus("off", "更新中…" + (state.ts ? "（顯示 " + fmtTime(state.ts) + " 的資料）" : ""));
   else setStatus("off", "載入中…");
-  let ok = false;
+  let ok = false, apiDone = false;
+
+  // 第一次開啟、畫面上還沒有任何資料時：平行讀取公開統計（約 0.5 秒）先畫出名額與圖表，名單等 Apps Script 回來再補上
+  if (!state.counts && statsSpreadsheetId()){
+    fetchGvizStats().then(st => {
+      if (apiDone || state.source === "api") return;
+      state.counts = st.counts; state.limits = st.limits; state.quotaScope = st.quotaScope;
+      state.agg = st.agg; state.registrations = null; state.unlocked = false;
+      state.ts = new Date(); state.source = "gviz";
+      setStatus("off", "已顯示統計資料" + (st.updated ? "（" + st.updated + "）" : "") + "，正在載入即時名單…");
+      render();
+    }).catch(err => console.warn("統計先行讀取失敗", err));
+  }
 
   // ② Apps Script
   try {
@@ -439,6 +451,7 @@ async function load(){
     state.ts = new Date();
     state.source = "api";
     ok = true;
+    apiDone = true;
     rememberStatsId(data.statsSpreadsheetId);
     setStatus("ok", "已連線・更新 " + state.ts.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) + (data.cached ? "（快取）" : ""));
   } catch(err){

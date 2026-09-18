@@ -260,7 +260,7 @@ h1,h2,h3,h4{font-family:var(--serif);margin:0;line-height:1.25}
 .walker .leg.b{animation-delay:-.3s}
 @keyframes step{from{transform:rotate(-18deg)}to{transform:rotate(18deg)}}
 @media (prefers-reduced-motion:reduce){
-  .cloud,.lantern,.smoke,.rice,.wave,.raft,.raft-sail,.pole,.wake,.bird,.sun-glow,.walker,.walker .leg,.stamp,.marquee-track,.pulse,.steam,.route-walker,.fish-lane,.fish-bob,.fish-tail,.fish-jump,.splash,.flag{animation:none!important}
+  .cloud,.lantern,.smoke,.rice,.wave,.raft,.raft-sail,.pole,.wake,.bird,.sun-glow,.walker,.walker .leg,.stamp,.marquee-track,.pulse,.steam,.route-walker,.fish-lane,.fish-bob,.fish-tail,.fish-jump,.splash,.flag,.quota-card.is-loading .bar{animation:none!important}
   .fish-jump,.splash{opacity:0!important}
 }
 
@@ -448,6 +448,9 @@ section.block{padding:4.5rem 0}
   border:3px solid var(--vermilion);padding:.2rem 1rem;border-radius:8px;transform:rotate(-8deg);letter-spacing:.2em;
 }
 .quota-card.is-full .q-full{display:grid}
+.quota-card.is-loading .q-num b{color:#cfc5b1}
+.quota-card.is-loading .bar{background:linear-gradient(90deg,var(--rice) 25%,#efe4cc 50%,var(--rice) 75%);background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
 .live{display:flex;justify-content:center;align-items:center;gap:.5rem;margin-top:1.4rem;font-size:.85rem;color:var(--ink-soft)}
 .pulse{width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 1.6s ease-in-out infinite}
 .pulse.off{background:var(--gold);animation:none}
@@ -1381,8 +1384,13 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
    ===================================================================== */
 const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
-  POLL_MS: 30000,
-  QUOTA_SCOPE: "session"
+  POLL_MS: 60000,              // 每位訪客每 60 秒更新一次（頁面在背景時暫停），減輕 Apps Script 負載
+  FETCH_TIMEOUT_MS: 10000,     // Apps Script 逾時秒數
+  QUOTA_SCOPE: "session",
+  // 備援：公開統計試算表（只含人數統計，不含個資）。開頁時先讀它快速顯示名額，Apps Script 慢或無回應時也用它
+  STATS_SPREADSHEET_ID: "1YAOD-_eKqRTBhFlqNv6iankT-seh4IRktsSWMSSRHiE",
+  STATS_SHEET: "統計",
+  STATS_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRENqd1xE3bGlyBYxRriGrghb2x3Q97jWBWpQHxe_6eyCNf3XvHV1aht4keHr-CPkNbc9HPWoKe93K5/pub?output=csv"
 };
 
 const SESSIONS = [
@@ -1456,23 +1464,128 @@ function demoCounts(){
   return c;
 }
 
+/* 名額資料來源：""＝尚未取得｜cache＝上次保存｜stats＝公開統計試算表｜api＝Apps Script 即時｜demo＝示範模式 */
+const LS_QUOTA = "tainan360_quota_cache";
+let countsSource = "";
+let countsTime = null;       // 資料時間（Date）
+
+function setCounts(c, source, time){
+  counts = c; countsSource = source; countsTime = time || new Date();
+  if (source === "api"){
+    try { localStorage.setItem(LS_QUOTA, JSON.stringify({ counts: c, ts: countsTime.toISOString() })); } catch(e){}
+  }
+}
+function loadQuotaCache(){
+  try {
+    const c = JSON.parse(localStorage.getItem(LS_QUOTA) || "null");
+    if (c && c.counts){ setCounts(applyCounts(c.counts), "cache", new Date(c.ts)); return true; }
+  } catch(e){}
+  return false;
+}
+
+function fetchWithTimeout(url, opts){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CONFIG.FETCH_TIMEOUT_MS);
+  return fetch(url, Object.assign({ signal: ctrl.signal, cache: "no-store" }, opts || {})).finally(() => clearTimeout(timer));
+}
+
+/* ---- 公開統計試算表（長格式：類型, 鍵1, 鍵2, 數值, 更新時間）---- */
+function parseCsv(text){
+  const rows = [], row = []; let field = "", q = false;
+  text = text.replace(/^﻿/, "");
+  for (let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if (q){
+      if (ch === '"'){ if (text[i + 1] === '"'){ field += '"'; i++; } else q = false; }
+      else field += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ","){ row.push(field); field = ""; }
+    else if (ch === "\n" || ch === "\r"){
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); rows.push(row.splice(0)); field = "";
+    } else field += ch;
+  }
+  if (field !== "" || row.length){ row.push(field); rows.push(row.splice(0)); }
+  return rows.filter(r => r.some(v => v !== ""));
+}
+function countsFromStatsRows(rows){
+  if (!rows.length || String(rows[0][0]).trim() !== "類型") throw new Error("統計資料格式不符");
+  const c = emptyCounts(); let updated = "";
+  rows.slice(1).forEach(([type, k1, k2, v, ts]) => {
+    if (type === "名額" && c[k1] && c[k1][k2] !== undefined) c[k1][k2] = Number(v) || 0;
+    if (ts) updated = ts;
+  });
+  const t = updated ? new Date(updated.replace(/-/g, "/")) : null;
+  return { counts: c, time: (t && !isNaN(t)) ? t : null };
+}
+function gvizJsonp(){
+  return new Promise((resolve, reject) => {
+    const cb = "gvizQuota_" + Date.now();
+    const s = document.createElement("script");
+    const timer = setTimeout(() => { cleanup(); reject(new Error("GViz 逾時")); }, CONFIG.FETCH_TIMEOUT_MS);
+    function cleanup(){ clearTimeout(timer); delete window[cb]; s.remove(); }
+    window[cb] = resp => { cleanup(); resolve(resp); };
+    s.onerror = () => { cleanup(); reject(new Error("GViz 載入失敗")); };
+    s.src = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(CONFIG.STATS_SPREADSHEET_ID)}/gviz/tq?tqx=out:json;responseHandler:${cb}&headers=1&sheet=${encodeURIComponent(CONFIG.STATS_SHEET)}&t=${Date.now()}`;
+    document.head.appendChild(s);
+  });
+}
+async function fetchStatsCounts(){
+  if (CONFIG.STATS_SPREADSHEET_ID){
+    try {
+      const res = await fetchWithTimeout(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(CONFIG.STATS_SPREADSHEET_ID)}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(CONFIG.STATS_SHEET)}&t=${Date.now()}`);
+      if (!res.ok) throw new Error("GViz HTTP " + res.status);
+      return countsFromStatsRows(parseCsv(await res.text()));
+    } catch(err){
+      try {
+        const resp = await gvizJsonp();
+        if (!resp || resp.status === "error" || !resp.table) throw new Error("GViz 回應錯誤");
+        const cell = x => (x == null || x.v == null) ? "" : (x.f != null ? String(x.f) : String(x.v));
+        const rows = [resp.table.cols.map(col => col.label || "")].concat(resp.table.rows.map(r => (r.c || []).map(cell)));
+        return countsFromStatsRows(rows);
+      } catch(e2){ console.warn("GViz 讀取失敗", e2); }
+    }
+  }
+  if (CONFIG.STATS_CSV_URL){
+    const res = await fetchWithTimeout(CONFIG.STATS_CSV_URL + (CONFIG.STATS_CSV_URL.includes("?") ? "&" : "?") + "t=" + Date.now());
+    return countsFromStatsRows(parseCsv(await res.text()));
+  }
+  throw new Error("沒有可用的統計來源");
+}
+
+let quotaLoading = false;
 async function fetchCounts(){
   if (!CONFIG.API_URL){
-    counts = demoCounts();
+    setCounts(demoCounts(), "demo");
     backendOnline = false;
     renderQuota();
     return;
   }
+  if (quotaLoading) return;
+  quotaLoading = true;
+  let apiDone = false;
+
+  // 尚未取得即時名額時，平行讀取公開統計試算表（約 0.5 秒）先顯示
+  if (countsSource !== "api"){
+    fetchStatsCounts().then(st => {
+      if (apiDone || countsSource === "api") return;
+      setCounts(st.counts, "stats", st.time);
+      renderQuota();
+    }).catch(err => console.warn("統計備援讀取失敗", err));
+  }
+
   try {
-    const res = await fetch(CONFIG.API_URL + (CONFIG.API_URL.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
+    const res = await fetchWithTimeout(CONFIG.API_URL + (CONFIG.API_URL.includes("?") ? "&" : "?") + "t=" + Date.now());
     const data = await res.json();
-    if (data && data.counts){
-      counts = applyCounts(data.counts);
-      backendOnline = true;
-    }
+    if (!data || !data.counts) throw new Error("名額資料格式不符");
+    apiDone = true;
+    setCounts(applyCounts(data.counts), "api");
+    backendOnline = true;
   } catch(err){
-    console.warn("無法取得名額資料", err);
+    console.warn("無法取得即時名額", err);
     backendOnline = false;
+  } finally {
+    quotaLoading = false;
   }
   renderQuota();
 }
@@ -1502,15 +1615,16 @@ function renderQuota(){
     renderQuota();
   }));
 
+  const known = countsSource !== "";   // 尚未取得任何名額資料時，不顯示數字，避免誤以為名額全空
   const grid = document.getElementById("quotaGrid");
   grid.innerHTML = IDENTITIES.map(i => {
     const left = remaining(i.key, quotaView);
     const usedN = i.limit - left;
-    const pct = Math.round(usedN / i.limit * 100);
+    const pct = known ? Math.round(usedN / i.limit * 100) : 0;
     return `
-      <div class="quota-card ${left === 0 ? "is-full" : ""}" style="--q-color:${i.color}">
+      <div class="quota-card ${known && left === 0 ? "is-full" : ""} ${known ? "" : "is-loading"}" style="--q-color:${i.color}">
         <div class="q-name">${i.key}</div>
-        <div class="q-num"><b>${left}</b><span>名 尚可報名</span></div>
+        <div class="q-num"><b>${known ? left : "–"}</b><span>${known ? "名 尚可報名" : "名額載入中…"}</span></div>
         <div class="bar"><i style="width:${pct}%"></i></div>
         <div class="q-full"><span>額滿</span></div>
       </div>`;
@@ -1529,20 +1643,30 @@ function renderQuota(){
     sel.innerHTML = `<option value="" disabled ${current ? "" : "selected"}>請選擇身分（顯示剩餘名額）</option>` +
       IDENTITIES.map(i => {
         const left = remaining(i.key, session);
-        const label = left > 0 ? `${i.key}（剩餘 ${left} 名）` : `${i.key}（已額滿）`;
-        return `<option value="${i.key}" ${left === 0 ? "disabled" : ""} ${current === i.key && left > 0 ? "selected" : ""}>${label}</option>`;
+        const full = known && left === 0;
+        const label = !known ? `${i.key}（名額載入中）` : full ? `${i.key}（已額滿）` : `${i.key}（剩餘 ${left} 名）`;
+        return `<option value="${i.key}" ${full ? "disabled" : ""} ${current === i.key && !full ? "selected" : ""}>${label}</option>`;
       }).join("");
   }
 
   const pulse = document.getElementById("livePulse");
   const text = document.getElementById("liveText");
-  const stamp = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
-  if (CONFIG.API_URL){
-    pulse.classList.toggle("off", !backendOnline);
-    text.textContent = backendOnline ? `名額即時更新中・最後更新 ${stamp}` : `暫時無法連線名額伺服器，顯示為上次資料（${stamp}）`;
+  const hm = d => d ? d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : "";
+  if (!CONFIG.API_URL){
+    pulse.classList.add("off");
+    text.textContent = `示範模式：尚未連接名額伺服器（設定 CONFIG.API_URL 後即時同步）・${hm(new Date())}`;
+  } else if (countsSource === "api"){
+    pulse.classList.remove("off");
+    text.textContent = `名額即時更新中・最後更新 ${hm(countsTime)}`;
+  } else if (countsSource === "stats" || countsSource === "cache"){
+    pulse.classList.add("off");
+    const when = countsTime ? `${hm(countsTime)} 的` : "最近的";
+    text.textContent = quotaLoading
+      ? `已顯示${when}名額，正在取得即時名額…`
+      : `即時名額伺服器暫時無回應，顯示${when}名額（送出報名時仍會即時檢查名額）`;
   } else {
     pulse.classList.add("off");
-    text.textContent = `示範模式：尚未連接名額伺服器（設定 CONFIG.API_URL 後即時同步）・${stamp}`;
+    text.textContent = quotaLoading ? "名額資料載入中…" : "暫時無法取得名額資料，仍可填寫報名表，送出時會即時檢查名額。";
   }
 }
 
@@ -1669,7 +1793,8 @@ document.getElementById("regForm").addEventListener("submit", async e => {
   try {
     const result = await submitRegistration(payload);
     if (result && result.ok){
-      counts = result.counts ? applyCounts(result.counts) : demoCounts();
+      if (result.counts) setCounts(applyCounts(result.counts), "api");
+      else setCounts(demoCounts(), "demo");
       showSuccess(payload);
       f.reset();
       renderQuota();
@@ -1709,8 +1834,10 @@ document.getElementById("closeModal").addEventListener("click", () => document.g
 document.getElementById("successModal").addEventListener("click", e => { if (e.target.id === "successModal") e.currentTarget.classList.remove("open"); });
 
 /* ---------- 啟動 ---------- */
-fetchCounts();
-setInterval(fetchCounts, CONFIG.POLL_MS);
+loadQuotaCache();   // 先顯示上次保存的名額
+fetchCounts();      // 同步設定「載入中」後才開始等待網路
+renderQuota();
+setInterval(() => { if (!document.hidden) fetchCounts(); }, CONFIG.POLL_MS);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) fetchCounts(); });
 </script>
 </body>
