@@ -163,6 +163,7 @@ function onOpen() {
     .addSeparator()
     .addItem('驗收測試：人事號不被轉成科學記號', 'testTextColumns')
     .addItem('清除人事號等欄位的前置撇號', 'fixApostrophes')
+    .addItem('診斷文字欄內容', 'diagnoseTextColumns')
     .addToUi();
 }
 
@@ -438,38 +439,72 @@ function appendRow_(sheet, row) {
 }
 
 /**
- * 修復既有資料：清除文字欄（人事號、手機簡碼/分機、出生日期、身分證號）儲存格內的前置撇號。
- * 先前版本以撇號寫入，造成儲存格變成 'B509A9；本函式把它們改回 B509A9，並維持純文字格式。
+ * 修復既有資料：把文字欄（人事號、手機簡碼/分機、出生日期、身分證號）整欄以乾淨的純文字重新寫入。
+ * 先前版本以撇號寫入，造成儲存格出現 'B509A9。撇號可能存在「值」裡，也可能是儲存格的文字標記，
+ * 因此這裡不做判斷，一律先清除格式 → 設為純文字 → 重新寫入去掉撇號的值，確保儲存格只剩乾淨原值。
  */
 function fixApostrophes() {
-  let fixed = 0;
+  let cellsWithMark = 0, rewritten = 0;
   const details = [];
   [MASTER_SHEET].concat(SESSIONS).forEach(name => {
     const sheet = ss_().getSheetByName(name);
     if (!sheet) return;
     const last = sheet.getLastRow();
     if (last < 2) return;
-    let n = 0;
+    const rows = last - 1;
+    let marked = 0;
     TEXT_COLS.forEach(h => {
-      const range = sheet.getRange(2, COL[h], last - 1, 1);
+      const range = sheet.getRange(2, COL[h], rows, 1);
       const values = range.getValues();
-      let changed = false;
-      const out = values.map(row => {
+      const formulas = range.getFormulas();        // 文字標記的撇號會出現在這裡
+      const out = values.map((row, i) => {
         const v = row[0];
-        if (typeof v === 'string' && v.charAt(0) === "'") { changed = true; n++; return v.replace(/^'+/, '').trim(); }
-        return v;
+        const f = formulas[i][0];
+        if ((typeof v === 'string' && v.charAt(0) === "'") || (typeof f === 'string' && f.charAt(0) === "'")) marked++;
+        return [asSheetText_(v)];                  // 去掉前置撇號與空白；日期物件轉 yyyy-MM-dd
       });
-      if (changed) { range.setNumberFormat('@'); range.setValues(out.map(v => [v])); }
+      range.clearFormat();                         // 先回到自動格式，避免舊格式影響
+      range.setNumberFormat('@');                  // 再設為純文字，寫入時不做型別判讀
+      range.setValues(out);
+      rewritten += out.length;
     });
-    if (n) details.push(name + ' ' + n + ' 格');
-    fixed += n;
+    details.push(name + '：' + rows + ' 列');
+    cellsWithMark += marked;
   });
   SpreadsheetApp.flush();
   clearCache_();
-  const msg = fixed ? ('已清除前置撇號：' + details.join('、') + '，共 ' + fixed + ' 格') : '沒有需要清除的前置撇號';
+  const msg = '已重新寫入文字欄（人事號、手機簡碼/分機、出生日期、身分證號）\n' +
+    details.join('\n') + '\n\n共處理 ' + rewritten + ' 格，其中原本帶撇號 ' + cellsWithMark + ' 格。\n' +
+    '若畫面仍顯示撇號，請重新整理試算表；仍有問題請執行「診斷文字欄內容」並回報結果。';
   Logger.log(msg);
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
-  return fixed;
+  return cellsWithMark;
+}
+
+/**
+ * 診斷：列出總表前 3 筆資料在文字欄的真實內容（值、顯示值、公式列內容、格式），
+ * 用來判斷撇號是存在值裡還是儲存格的文字標記。
+ */
+function diagnoseTextColumns() {
+  const sheet = getSheet_(MASTER_SHEET);
+  const last = Math.min(sheet.getLastRow(), 4);
+  if (last < 2) { try { SpreadsheetApp.getUi().alert('總表沒有資料'); } catch (e) {} return; }
+  const lines = [];
+  for (let r = 2; r <= last; r++) {
+    TEXT_COLS.forEach(h => {
+      const cell = sheet.getRange(r, COL[h]);
+      const v = cell.getValue();
+      lines.push('列' + r + '｜' + h +
+        '｜值=' + JSON.stringify(v) + '（' + (v instanceof Date ? 'Date' : typeof v) + '）' +
+        '｜顯示=' + JSON.stringify(cell.getDisplayValue()) +
+        '｜公式列=' + JSON.stringify(cell.getFormula()) +
+        '｜格式=' + JSON.stringify(cell.getNumberFormat()));
+    });
+  }
+  const msg = lines.join('\n');
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert('文字欄診斷（前 3 筆）', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
+  return msg;
 }
 
 /**
