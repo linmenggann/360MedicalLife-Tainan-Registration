@@ -53,7 +53,7 @@ const CACHE_SECONDS = 20;
 // 表頭（總表與各梯次分頁相同）
 const HEADERS = ['報名時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱', '手機簡碼/分機', 'E-mail', '出生日期', '身分證號', '餐食', '通知寄送時間', '備註'];
 const COL = {}; HEADERS.forEach((h, i) => COL[h] = i + 1);   // 1-based 欄位索引
-// 以文字儲存的欄位：寫入時加前置撇號（見 appendRow_），避免 8607E7 被當成科學記號、0 開頭被去掉、日期被自動轉換
+// 以文字儲存的欄位：寫入前先設為純文字格式（見 appendRow_），避免 8607E7 被當成科學記號、0 開頭被去掉、日期被自動轉換
 const TEXT_COLS = ['人事號', '手機簡碼/分機', '出生日期', '身分證號'];
 const COL_WIDTHS = [150, 90, 110, 140, 90, 90, 120, 130, 220, 110, 120, 70, 150, 220];
 
@@ -162,6 +162,7 @@ function onOpen() {
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
     .addSeparator()
     .addItem('驗收測試：人事號不被轉成科學記號', 'testTextColumns')
+    .addItem('清除人事號等欄位的前置撇號', 'fixApostrophes')
     .addToUi();
 }
 
@@ -412,31 +413,63 @@ function txt_(v) {
 }
 
 /**
- * 寫入文字欄：一律加前置撇號，強制 Google 試算表存成文字。
- * 例：8607E7 若不加撇號會被判讀為 8.607×10^10（顯示 8.607E+10），B41242 則原樣保留。
+ * 寫入文字欄用的值：去掉前置撇號與前後空白，日期物件轉成 yyyy-MM-dd。
+ * 不可加前置撇號：Apps Script 以 setValues 寫入時，撇號會被當成字面字元存進儲存格（顯示 'B509A9），
+ * 人工閱讀、下載 Excel 或匯入其他系統都會多一個撇號。
  */
 function asSheetText_(v) {
-  const s = (v instanceof Date) ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : txt_(v);
-  return s === '' ? '' : "'" + s;
+  return (v instanceof Date) ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : txt_(v);
 }
 
 /**
  * 寫入一列（報名、管理者加報都走這裡）；回傳列號。
- * 1. 文字欄加前置撇號。
- * 2. 寫入前先清除該列格式：欄位若已是「純文字」格式，撇號會被當成字面字元保留，所以要先回到自動格式。
- * 3. 寫入後再把文字欄設為純文字格式，之後有人直接在試算表修改也不會被轉換。
+ * 防止 8607E7 被判讀為科學記號的做法：**先把文字欄的儲存格設為純文字格式（@），再寫入值**。
+ * 純文字格式下，Google 試算表不會對寫入的字串做任何型別判讀，值也不會多出撇號。
  */
 function appendRow_(sheet, row) {
   const r = sheet.getLastRow() + 1;
   const out = row.slice(0, HEADERS.length);
   while (out.length < HEADERS.length) out.push('');
   TEXT_COLS.forEach(h => { out[COL[h] - 1] = asSheetText_(out[COL[h] - 1]); });
-  const range = sheet.getRange(r, 1, 1, out.length);
-  range.clearFormat();
-  range.setValues([out]);
-  sheet.getRange(r, COL['報名時間']).setNumberFormat('yyyy/MM/dd HH:mm:ss');
   TEXT_COLS.forEach(h => sheet.getRange(r, COL[h]).setNumberFormat('@'));
+  sheet.getRange(r, COL['報名時間']).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+  sheet.getRange(r, 1, 1, out.length).setValues([out]);
   return r;
+}
+
+/**
+ * 修復既有資料：清除文字欄（人事號、手機簡碼/分機、出生日期、身分證號）儲存格內的前置撇號。
+ * 先前版本以撇號寫入，造成儲存格變成 'B509A9；本函式把它們改回 B509A9，並維持純文字格式。
+ */
+function fixApostrophes() {
+  let fixed = 0;
+  const details = [];
+  [MASTER_SHEET].concat(SESSIONS).forEach(name => {
+    const sheet = ss_().getSheetByName(name);
+    if (!sheet) return;
+    const last = sheet.getLastRow();
+    if (last < 2) return;
+    let n = 0;
+    TEXT_COLS.forEach(h => {
+      const range = sheet.getRange(2, COL[h], last - 1, 1);
+      const values = range.getValues();
+      let changed = false;
+      const out = values.map(row => {
+        const v = row[0];
+        if (typeof v === 'string' && v.charAt(0) === "'") { changed = true; n++; return v.replace(/^'+/, '').trim(); }
+        return v;
+      });
+      if (changed) { range.setNumberFormat('@'); range.setValues(out.map(v => [v])); }
+    });
+    if (n) details.push(name + ' ' + n + ' 格');
+    fixed += n;
+  });
+  SpreadsheetApp.flush();
+  clearCache_();
+  const msg = fixed ? ('已清除前置撇號：' + details.join('、') + '，共 ' + fixed + ' 格') : '沒有需要清除的前置撇號';
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+  return fixed;
 }
 
 /**

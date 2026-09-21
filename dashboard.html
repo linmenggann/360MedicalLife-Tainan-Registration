@@ -159,6 +159,10 @@ tr.total td{font-weight:700;background:#fffaf0}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7"/><path d="M21 3v6h-6"/></svg>
         重新整理
       </button>
+      <button class="btn" id="xlsxBtn" type="button" disabled title="名單資料載入後可匯出；人事號為純文字，適合列印與匯入其他系統">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+        匯出名單 Excel
+      </button>
       <button class="btn" id="csvBtn" type="button" disabled title="名單資料載入後可匯出">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
         匯出名單 CSV
@@ -615,6 +619,7 @@ function renderDetail(){
   $("#detailCharts").hidden = !charts;
   $("#rosterSection").hidden = !roster;
   $("#csvBtn").disabled = !roster;
+  $("#xlsxBtn").disabled = !roster;
   if (charts){ renderDaily(); renderUnits(); }
   if (roster){ fillFilters(); renderRoster(); }
 }
@@ -724,19 +729,106 @@ $("#csvBtn").addEventListener("click", () => {
   if (!state.registrations) return;
   downloadCsv(buildRosterCsv(filteredRoster()), `報名名單_${new Date().toISOString().slice(0, 10)}.csv`);
 });
-/* 驗收測試：網址加上 ?csvtest=1 會出現「下載 CSV 驗收檔」，內含人事號 8607E7 與 B41242 兩筆測試資料 */
-if (new URLSearchParams(location.search).get("csvtest") === "1"){
-  const btn = document.createElement("button");
-  btn.className = "btn"; btn.type = "button"; btn.textContent = "下載 CSV 驗收檔";
-  btn.addEventListener("click", () => {
-    const now = new Date().toISOString();
-    const t = { ts: now, session: "第一梯次", identity: "臨床教師", unit: "驗收測試", title: "測試", meal: "葷食" };
-    downloadCsv(buildRosterCsv([
-      Object.assign({}, t, { name: "驗收測試A", empId: "8607E7" }),
-      Object.assign({}, t, { name: "驗收測試B", empId: "B41242" })
-    ]), "CSV驗收測試_8607E7_B41242.csv");
+
+/* ---------- Excel (.xlsx) 匯出：每格都是文字，人事號沒有撇號也不會被轉換 ---------- */
+// 自行組出最小可用的 xlsx（ZIP，不壓縮），不依賴外部函式庫。
+// 所有儲存格用 inlineStr（文字型別），Excel 開啟即為文字，匯入其他系統也是乾淨的原值。
+function xmlEsc(s){
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]))
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");   // XML 不允許的控制字元
+}
+function colLetter(n){ let s = ""; while (n > 0){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+function sheetXml(rows){
+  const body = rows.map((row, r) => {
+    const cells = row.map((v, c) => `<c r="${colLetter(c + 1)}${r + 1}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`).join("");
+    return `<row r="${r + 1}">${cells}</row>`;
+  }).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+}
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++){ let c = i; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[i] = c >>> 0; }
+  return t;
+})();
+function crc32(bytes){
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function zipStore(files){   // files: [{name, text}]
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  files.forEach(f => {
+    const nameBytes = enc.encode(f.name), data = enc.encode(f.text), crc = crc32(data);
+    const local = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(local.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0x0800, true);
+    lv.setUint16(8, 0, true); lv.setUint16(10, 0, true); lv.setUint16(12, 0x2821, true);   // 固定時間 2020/01/01
+    lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true);
+    lv.setUint16(26, nameBytes.length, true); lv.setUint16(28, 0, true);
+    local.set(nameBytes, 30);
+    parts.push(local, data);
+    const cd = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(cd.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 0, true); cv.setUint16(12, 0, true); cv.setUint16(14, 0x2821, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true);
+    cv.setUint16(28, nameBytes.length, true); cv.setUint32(42, offset, true);
+    cd.set(nameBytes, 46);
+    central.push(cd);
+    offset += local.length + data.length;
   });
-  $("#csvBtn").after(btn);
+  const centralSize = central.reduce((n, c) => n + c.length, 0);
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+  ev.setUint32(12, centralSize, true); ev.setUint32(16, offset, true);
+  return new Blob(parts.concat(central, [end]), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+function buildXlsx(rows, sheetName){
+  const name = xmlEsc(String(sheetName || "工作表1").slice(0, 31).replace(/[\[\]\*\/\\\?:]/g, ""));
+  return zipStore([
+    { name: "[Content_Types].xml", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
+    { name: "_rels/.rels", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+    { name: "xl/workbook.xml", text: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${name}" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: "xl/_rels/workbook.xml.rels", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+    { name: "xl/styles.xml", text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>' },
+    { name: "xl/worksheets/sheet1.xml", text: sheetXml(rows) }
+  ]);
+}
+function rosterRows(rows){
+  return [CSV_HEAD].concat(rows.map(r => {
+    const d = new Date(r.ts);
+    return [isNaN(d) ? String(r.ts) : d.toLocaleString("zh-TW"), r.session, r.identity, r.unit, r.name, r.empId, r.title, r.meal].map(v => String(v ?? ""));
+  }));
+}
+function downloadBlob(blob, filename){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+$("#xlsxBtn").addEventListener("click", () => {
+  if (!state.registrations) return;
+  downloadBlob(buildXlsx(rosterRows(filteredRoster()), "報名名單"), `報名名單_${new Date().toISOString().slice(0, 10)}.xlsx`);
+});
+/* 驗收測試：網址加上 ?csvtest=1 會出現驗收檔下載按鈕，內含人事號 8607E7 與 B41242 兩筆測試資料 */
+if (new URLSearchParams(location.search).get("csvtest") === "1"){
+  const sample = () => {
+    const t = { ts: new Date().toISOString(), session: "第一梯次", identity: "臨床教師", unit: "驗收測試", title: "測試", meal: "葷食" };
+    return [Object.assign({}, t, { name: "驗收測試A", empId: "8607E7" }), Object.assign({}, t, { name: "驗收測試B", empId: "B41242" })];
+  };
+  const mk = (label, fn) => {
+    const btn = document.createElement("button");
+    btn.className = "btn"; btn.type = "button"; btn.textContent = label;
+    btn.addEventListener("click", fn);
+    return btn;
+  };
+  const b1 = mk("下載 CSV 驗收檔", () => downloadCsv(buildRosterCsv(sample()), "CSV驗收測試_8607E7_B41242.csv"));
+  const b2 = mk("下載 Excel 驗收檔", () => downloadBlob(buildXlsx(rosterRows(sample()), "驗收測試"), "Excel驗收測試_8607E7_B41242.xlsx"));
+  $("#csvBtn").after(b1); b1.after(b2);
 }
 
 /* ---------- 提示框 ---------- */
