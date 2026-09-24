@@ -1385,7 +1385,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
   POLL_MS: 60000,              // 每位訪客每 60 秒更新一次（頁面在背景時暫停），減輕 Apps Script 負載
-  FETCH_TIMEOUT_MS: 10000,     // Apps Script 逾時秒數
+  FETCH_TIMEOUT_MS: 25000,     // Apps Script 逾時秒數；名額已先由保存資料或公開統計顯示，所以可以多等一點
   QUOTA_SCOPE: "session",
   // 備援：公開統計試算表（只含人數統計，不含個資）。開頁時先讀它快速顯示名額，Apps Script 慢或無回應時也用它
   STATS_SPREADSHEET_ID: "1YAOD-_eKqRTBhFlqNv6iankT-seh4IRktsSWMSSRHiE",
@@ -1554,6 +1554,7 @@ async function fetchStatsCounts(){
 }
 
 let quotaLoading = false;
+let quotaRetry = null;
 async function fetchCounts(){
   if (!CONFIG.API_URL){
     setCounts(demoCounts(), "demo");
@@ -1563,6 +1564,7 @@ async function fetchCounts(){
   }
   if (quotaLoading) return;
   quotaLoading = true;
+  if (quotaRetry){ clearTimeout(quotaRetry); quotaRetry = null; }
   let apiDone = false;
 
   // 尚未取得即時名額時，平行讀取公開統計試算表（約 0.5 秒）先顯示
@@ -1582,8 +1584,15 @@ async function fetchCounts(){
     setCounts(applyCounts(data.counts), "api");
     backendOnline = true;
   } catch(err){
-    console.warn("無法取得即時名額", err);
+    // 不顯示任何提示：安靜地改用公開統計（若比畫面上的資料新），並在 15 秒後自動重試
+    console.warn("無法取得即時名額，改用公開統計", err);
     backendOnline = false;
+    fetchStatsCounts().then(st => {
+      if (countsSource === "api" && countsTime && st.time && st.time <= countsTime) return;
+      setCounts(st.counts, "stats", st.time);
+      renderQuota();
+    }).catch(e2 => console.warn("統計備援讀取失敗", e2));
+    quotaRetry = setTimeout(() => { if (!document.hidden) fetchCounts(); }, 15000);
   } finally {
     quotaLoading = false;
   }
@@ -1655,15 +1664,10 @@ function renderQuota(){
   if (!CONFIG.API_URL){
     pulse.classList.add("off");
     text.textContent = `示範模式：尚未連接名額伺服器（設定 CONFIG.API_URL 後即時同步）・${hm(new Date())}`;
-  } else if (countsSource === "api"){
+  } else if (countsSource === "api" || countsSource === "stats" || countsSource === "cache"){
+    // 比照儀表板：不論名額來自即時伺服器、公開統計或上次保存，一律只顯示更新時間，不顯示「伺服器無回應」之類的提示
     pulse.classList.remove("off");
-    text.textContent = `名額即時更新中・最後更新 ${hm(countsTime)}`;
-  } else if (countsSource === "stats" || countsSource === "cache"){
-    pulse.classList.add("off");
-    const when = countsTime ? `${hm(countsTime)} 的` : "最近的";
-    text.textContent = quotaLoading
-      ? `已顯示${when}名額，正在取得即時名額…`
-      : `即時名額伺服器暫時無回應，顯示${when}名額（送出報名時仍會即時檢查名額）`;
+    text.textContent = `名額更新於 ${hm(countsTime)}`;
   } else {
     pulse.classList.add("off");
     text.textContent = quotaLoading ? "名額資料載入中…" : "暫時無法取得名額資料，仍可填寫報名表，送出時會即時檢查名額。";
