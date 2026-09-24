@@ -212,7 +212,7 @@ tr.total td{font-weight:700;background:#fffaf0}
 
   <section class="section" id="rosterSection" hidden>
     <div class="card">
-      <div class="section-title"><h2>報名名單</h2><span class="sub">最新報名在最前</span></div>
+      <div class="section-title"><h2>報名名單</h2><span class="sub" id="rosterSub">最新報名在最前</span></div>
       <div class="filters">
         <select id="fSession"><option value="">全部梯次</option></select>
         <select id="fIdentity"><option value="">全部身分</option></select>
@@ -234,7 +234,7 @@ const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
   POLL_MS: 60000,
   DASHBOARD_KEY: "chimei360",   // 需與 Code.gs 的 DASHBOARD_KEY 相同；兩者皆留空則不檢查
-  FETCH_TIMEOUT_MS: 10000,      // Apps Script 逾時秒數，超過改用備援
+  FETCH_TIMEOUT_MS: 25000,      // Apps Script 逾時秒數；畫面已先由快取或公開統計畫好，所以可以多等一點
   // 備援 1：公開統計試算表的 GViz 端點（即時）。ID 會自動由後端取得並記住；也可在此手動填入
   STATS_SPREADSHEET_ID: "1YAOD-_eKqRTBhFlqNv6iankT-seh4IRktsSWMSSRHiE",
   STATS_SHEET: "統計",
@@ -257,7 +257,7 @@ const PER_SESSION_LIMIT = IDENTITIES.reduce((n, i) => n + i.limit, 0);
 const LS_CACHE = "tainan360_dashboard_cache";
 const LS_STATS_ID = "tainan360_stats_spreadsheet_id";
 // agg：{ meals:{梯次:{葷食,素食}}, daily:{yyyy-mm-dd:n}, units:{單位:n} }；來自名單或 CSV 統計
-let state = { counts: null, limits: null, quotaScope: "session", registrations: null, agg: null, ts: null, source: "", unlocked: false, online: false };
+let state = { counts: null, limits: null, quotaScope: "session", registrations: null, agg: null, ts: null, rosterTs: null, source: "", unlocked: false, online: false };
 
 /* ---------------- 工具 ---------------- */
 const $ = s => document.querySelector(s);
@@ -292,9 +292,17 @@ function fetchWithTimeout(url, opts){
   const timer = setTimeout(() => ctrl.abort(), CONFIG.FETCH_TIMEOUT_MS);
   return fetch(url, Object.assign({ signal: ctrl.signal, cache: "no-store" }, opts || {})).finally(() => clearTimeout(timer));
 }
+/* 儀表板資料改用 GET 讀取：Google 偶爾會把 POST 轉成 GET 才執行，回來的只有名額、沒有名單。
+   舊版後端的 GET 不支援 action=dashboard（回傳沒有名單），這時再用 POST 讀一次以相容。 */
 async function apiDashboard(){
-  const res = await fetchWithTimeout(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "dashboard", key: CONFIG.DASHBOARD_KEY || "" }) });
-  return await res.json();
+  const sep = CONFIG.API_URL.includes("?") ? "&" : "?";
+  const url = `${CONFIG.API_URL}${sep}action=dashboard&key=${encodeURIComponent(CONFIG.DASHBOARD_KEY || "")}&t=${Date.now()}`;
+  const data = await (await fetchWithTimeout(url)).json();
+  if (data && data.ok && !Array.isArray(data.registrations)){
+    const res = await fetchWithTimeout(CONFIG.API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "dashboard", key: CONFIG.DASHBOARD_KEY || "" }) });
+    return await res.json();
+  }
+  return data;
 }
 async function apiCounts(){
   const res = await fetchWithTimeout(CONFIG.API_URL + "?t=" + Date.now());
@@ -397,34 +405,42 @@ function statsFromRows(rows){
 }
 
 function saveCache(){
-  try { localStorage.setItem(LS_CACHE, JSON.stringify({ counts: state.counts, limits: state.limits, quotaScope: state.quotaScope, registrations: state.registrations, agg: state.agg, ts: state.ts, source: state.source })); } catch(e){}
+  try { localStorage.setItem(LS_CACHE, JSON.stringify({ counts: state.counts, limits: state.limits, quotaScope: state.quotaScope, registrations: state.registrations, agg: state.agg, ts: state.ts, rosterTs: state.rosterTs, source: state.source })); } catch(e){}
 }
 function loadCache(){
   try {
     const c = JSON.parse(localStorage.getItem(LS_CACHE) || "null");
     if (!c || !c.counts) return false;
-    Object.assign(state, { counts: c.counts, limits: c.limits, quotaScope: c.quotaScope || "session", registrations: c.registrations || null, agg: c.agg || null, ts: c.ts ? new Date(c.ts) : null, source: "cache", unlocked: Array.isArray(c.registrations) });
+    Object.assign(state, { counts: c.counts, limits: c.limits, quotaScope: c.quotaScope || "session", registrations: c.registrations || null, agg: c.agg || null, ts: c.ts ? new Date(c.ts) : null, rosterTs: c.rosterTs ? new Date(c.rosterTs) : (c.ts ? new Date(c.ts) : null), source: "cache", unlocked: Array.isArray(c.registrations) });
     return true;
   } catch(e){ return false; }
 }
+
+/* 以公開統計更新人數與圖表；已載入過的名單保留（名單標題會註明名單時間），不顯示任何警告 */
+function applyStats(st, source){
+  state.counts = st.counts; state.limits = st.limits || state.limits; state.quotaScope = st.quotaScope;
+  state.agg = st.agg;
+  state.unlocked = Array.isArray(state.registrations);
+  state.ts = new Date(); state.source = source;
+}
+const hhmm = d => d ? d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : "";
+let retryTimer = null;
 
 let loading = false;
 async function load(){
   if (loading) return;
   loading = true;
   $("#refreshBtn").disabled = true;
-  if (state.counts) setStatus("off", "更新中…" + (state.ts ? "（顯示 " + fmtTime(state.ts) + " 的資料）" : ""));
+  if (state.counts) setStatus("off", "更新中…");
   else setStatus("off", "載入中…");
   let ok = false, apiDone = false;
+  if (retryTimer){ clearTimeout(retryTimer); retryTimer = null; }
 
   // 第一次開啟、畫面上還沒有任何資料時：平行讀取公開統計（約 0.5 秒）先畫出名額與圖表，名單等 Apps Script 回來再補上
   if (!state.counts && statsSpreadsheetId()){
     fetchGvizStats().then(st => {
       if (apiDone || state.source === "api") return;
-      state.counts = st.counts; state.limits = st.limits; state.quotaScope = st.quotaScope;
-      state.agg = st.agg; state.registrations = null; state.unlocked = false;
-      state.ts = new Date(); state.source = "gviz";
-      setStatus("off", "已顯示統計資料" + (st.updated ? "（" + st.updated + "）" : "") + "，正在載入即時名單…");
+      applyStats(st, "gviz");
       render();
     }).catch(err => console.warn("統計先行讀取失敗", err));
   }
@@ -435,19 +451,19 @@ async function load(){
     if (data && data.ok && Array.isArray(data.registrations)){
       state.unlocked = true;
       state.registrations = data.registrations;
+      state.rosterTs = new Date();
       state.agg = aggFromRegistrations(data.registrations);
       notice(null);
-    } else {
+    } else if (data && data.error === "unauthorized"){
       state.unlocked = false;
       state.registrations = null;
       state.agg = null;
-      if (data && data.error === "unauthorized"){
-        notice("error", "後端已設定 <code>DASHBOARD_KEY</code>，與本頁的 <code>CONFIG.DASHBOARD_KEY</code> 不一致，目前僅顯示名額統計。請在兩處填入相同金鑰，或將 Code.gs 的 <code>DASHBOARD_KEY</code> 留空。");
-      } else {
-        notice("warn", "後端尚未支援名單查詢：請將最新的 <code>apps-script/Code.gs</code> 貼回 Apps Script，並以「新版本」重新部署後再試。目前僅顯示名額統計。");
-      }
+      notice("error", "後端已設定 <code>DASHBOARD_KEY</code>，與本頁的 <code>CONFIG.DASHBOARD_KEY</code> 不一致，目前僅顯示名額統計。請在兩處填入相同金鑰，或將 Code.gs 的 <code>DASHBOARD_KEY</code> 留空。");
       data = await apiCounts();
       if (!data || !data.ok) throw new Error("bad counts response");
+    } else {
+      // 回應沒有名單（多半是 Google 端的暫時狀況）：當作這次沒拿到，保留已載入的名單，改用公開統計並稍後重試，不顯示提示
+      throw new Error("dashboard response without registrations");
     }
     state.counts = Object.assign(emptyCounts(), data.counts || {});
     state.limits = data.limits || null;
@@ -457,41 +473,35 @@ async function load(){
     ok = true;
     apiDone = true;
     rememberStatsId(data.statsSpreadsheetId);
-    setStatus("ok", "已連線・更新 " + state.ts.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) + (data.cached ? "（快取）" : ""));
+    setStatus("ok", "已更新 " + hhmm(state.ts));
   } catch(err){
-    console.warn("Apps Script 讀取失敗，改用備援", err);
+    console.warn("Apps Script 讀取失敗，改用公開統計（不顯示提示）", err);
   }
 
-  // ③ GViz 端點（即時）
+  // ③ Apps Script 沒回應：安靜地改用公開統計更新人數與圖表，名單保留上次載入的內容
   if (!ok && statsSpreadsheetId()){
     try {
-      const st = await fetchGvizStats();
-      state.counts = st.counts; state.limits = st.limits; state.quotaScope = st.quotaScope;
-      state.agg = st.agg; state.registrations = null; state.unlocked = false;
-      state.ts = new Date(); state.source = "gviz";
+      applyStats(await fetchGvizStats(), "gviz");
       ok = true;
-      setStatus("off", "Apps Script 無回應，改用 GViz 即時統計" + (st.updated ? "（統計更新於 " + st.updated + "）" : ""));
-      notice("warn", "目前顯示的是公開統計試算表的即時統計（GViz 端點，不含報名名單）。Apps Script 恢復後會自動切回即時資料。");
     } catch(err){
       console.warn("GViz 讀取失敗", err);
     }
   }
-
-  // ④ 發布到網路的 CSV 備援
   if (!ok && CONFIG.STATS_CSV_URL){
     try {
       const res = await fetchWithTimeout(CONFIG.STATS_CSV_URL + (CONFIG.STATS_CSV_URL.includes("?") ? "&" : "?") + "t=" + Date.now());
-      const st = statsFromCsv(await res.text());
-      state.counts = st.counts; state.limits = st.limits; state.quotaScope = st.quotaScope;
-      state.agg = st.agg; state.registrations = null; state.unlocked = false;
-      state.ts = new Date(); state.source = "csv";
+      applyStats(statsFromCsv(await res.text()), "csv");
       ok = true;
-      setStatus("off", "Apps Script 無回應，改用備援統計" + (st.updated ? "（統計更新於 " + st.updated + "）" : ""));
-      notice("warn", "目前顯示的是公開統計試算表的備援資料（每 5 分鐘更新，不含報名名單）。Apps Script 恢復後會自動切回即時資料。");
     } catch(err){
       console.warn("CSV 備援讀取失敗", err);
     }
   }
+  if (ok && !apiDone){
+    setStatus("ok", "已更新 " + hhmm(state.ts));
+    notice(null);
+  }
+  // Apps Script 沒回應時，15 秒後自動再試一次，不必等下一輪 60 秒
+  if (!apiDone) retryTimer = setTimeout(load, 15000);
 
   // ⑤ 全部失敗：保留上次資料
   if (!ok){
@@ -682,6 +692,7 @@ function filteredRoster(){
       (!q || [r.name, r.unit, r.empId, r.title].some(v => String(v).toLowerCase().includes(q))));
 }
 function renderRoster(){
+  $("#rosterSub").textContent = "最新報名在最前" + (state.rosterTs ? "・名單更新於 " + hhmm(state.rosterTs) : "");
   const rows = filteredRoster();
   $("#rosterCount").textContent = `顯示 ${rows.length}／${state.registrations.length} 筆`;
   if (!rows.length){ $("#roster").innerHTML = `<tr><td colspan="8"><div class="empty">沒有符合條件的報名資料</div></td></tr>`; return; }

@@ -48,7 +48,9 @@ const QUOTA_SCOPE = 'session';
 const DASHBOARD_KEY = 'chimei360';
 
 // 快取秒數（名額與儀表板資料）
-const CACHE_SECONDS = 20;
+// 報名寫入後會立即以最新資料更新快取；每 5 分鐘的排程（publishStats）也會重建快取，
+// 所以快取可以放長。只有「直接在試算表手動修改資料」時，最多延遲這段時間才反映（可用選單「清除快取」立即更新）。
+const CACHE_SECONDS = 360;
 
 // 表頭（總表與各梯次分頁相同）
 const HEADERS = ['報名時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱', '手機簡碼/分機', 'E-mail', '出生日期', '身分證號', '餐食', '通知寄送時間', '備註'];
@@ -265,13 +267,42 @@ function countsPayload_(counts) {
 /* Web App                                                             */
 /* ------------------------------------------------------------------ */
 
-/** GET：回傳各梯次、各身分已報名人數與限額（有快取） */
+/**
+ * 由總表資料列一次產生「名額」與「儀表板」兩份回應並寫入快取；rows 省略時自行讀取總表。
+ * 報名寫入後、每 5 分鐘排程、背景作業都會呼叫，讓網頁與儀表板的讀取幾乎都直接命中快取。
+ */
+function refreshCaches_(rows) {
+  rows = rows || readMaster_(getSheet_(MASTER_SHEET));
+  const counts = countsFromRows_(rows);
+  const countsPayload = countsPayload_(counts);
+  const dashboardPayload = countsPayload_(counts);
+  dashboardPayload.sessionDates = SESSION_DATES;
+  dashboardPayload.registrations = registrationsFromRows_(rows);
+  cachePut_('counts', countsPayload);
+  cachePut_('dashboard', dashboardPayload);
+  return { counts: countsPayload, dashboard: dashboardPayload };
+}
+
+/**
+ * GET：預設回傳各梯次、各身分已報名人數與限額；?action=dashboard&key=… 回傳儀表板資料（含名單）。
+ * 儀表板改用 GET：Google 偶爾會把 POST 轉成 GET 後才執行（實測 2026-09-24），用 GET 可避開這個問題。
+ */
 function doGet(e) {
+  const p = (e && e.parameter) || {};
+  if (p.action === 'dashboard') return dashboardResponse_(p.key);
   const cached = cacheGet_('counts');
   if (cached) { cached.cached = true; return json_(cached); }
-  const payload = countsPayload_(getCounts_(getSheet_(MASTER_SHEET)));
-  cachePut_('counts', payload);
-  return json_(payload);
+  return json_(refreshCaches_().counts);
+}
+
+/** 儀表板資料（名額＋不含敏感欄位的名單），GET 與 POST 共用 */
+function dashboardResponse_(key) {
+  if (DASHBOARD_KEY && String(key || '') !== DASHBOARD_KEY) {
+    return json_({ ok: false, error: 'unauthorized', message: '金鑰不正確' });
+  }
+  const cached = cacheGet_('dashboard');
+  if (cached) { cached.cached = true; return json_(cached); }
+  return json_(refreshCaches_().dashboard);
 }
 
 /** POST：新增一筆報名（body 為 JSON 字串），或儀表板資料查詢（action=dashboard） */
@@ -283,20 +314,8 @@ function doPost(e) {
     return json_({ ok: false, error: 'invalid', message: '無法解析資料' });
   }
 
-  // 儀表板資料（不需鎖定）
-  if (d.action === 'dashboard') {
-    if (DASHBOARD_KEY && String(d.key || '') !== DASHBOARD_KEY) {
-      return json_({ ok: false, error: 'unauthorized', message: '金鑰不正確' });
-    }
-    const cached = cacheGet_('dashboard');
-    if (cached) { cached.cached = true; return json_(cached); }
-    const rows = readMaster_(getSheet_(MASTER_SHEET));
-    const payload = countsPayload_(countsFromRows_(rows));
-    payload.sessionDates = SESSION_DATES;
-    payload.registrations = registrationsFromRows_(rows);
-    cachePut_('dashboard', payload);
-    return json_(payload);
-  }
+  // 儀表板資料（不需鎖定；保留 POST 以相容舊版儀表板）
+  if (d.action === 'dashboard') return dashboardResponse_(d.key);
 
   // 報名寫入（需鎖定避免同時報名超額）
   const lock = LockService.getScriptLock();
@@ -332,6 +351,8 @@ function doPost(e) {
         const which = sameEmp ? '此人事號' : '此身分證號';
         return json_({
           ok: false, error: 'duplicate', counts: counts,
+          existingSession: String(r[COL['梯次'] - 1]).trim(),
+          existingEmpId: normalizeId(r[COL['人事號'] - 1]),
           message: which + '已報名' + String(r[COL['梯次'] - 1]).trim() + '，每人限報名一個梯次；如需更改梯次請聯絡教學部（分機 57440）。'
         });
       }
@@ -360,14 +381,18 @@ function doPost(e) {
     const masterRow = appendRow_(master, row);
     const sessionRow = appendRow_(sessionSheet, row);
     SpreadsheetApp.flush();
-    clearCache_();
+
+    // 以「寫入前讀到的資料 + 這一筆」直接更新快取，不必再讀一次試算表
+    rows.push(row);
+    try { refreshCaches_(rows); } catch (err) { clearCache_(); }
 
     counts[session][identity]++;
 
     // 通知信與公開統計改為背景作業（約一分鐘內執行），讓報名立即回覆
     const queued = scheduleBackgroundJob_();
 
-    return json_({ ok: true, counts: counts, queued: queued });
+    // registered:true 是「確實寫入」的標記：網頁只有看到它才顯示報名成功
+    return json_({ ok: true, registered: true, session: session, empId: empId, counts: counts, queued: queued });
   } finally {
     lock.releaseLock();
   }
@@ -1014,13 +1039,16 @@ function gvizUrl_(id) {
  *   設定 | quotaScope | | session/total
  */
 function publishStats() {
+  // 每 5 分鐘的排程順便重建快取，讓網頁與儀表板的讀取維持在快取命中（回應較快、較不受冷啟動影響）
+  const rows = readMaster_(getSheet_(MASTER_SHEET));
+  try { refreshCaches_(rows); } catch (err) { Logger.log('refreshCaches_ 失敗：' + err); }
+
   const id = PropertiesService.getScriptProperties().getProperty(STATS_PROP);
   if (!id) return;   // 尚未執行 setupStatsPublishing
   let stats;
   try { stats = SpreadsheetApp.openById(id); } catch (e) { return; }
   let sheet = stats.getSheetByName(STATS_SHEET) || stats.insertSheet(STATS_SHEET);
 
-  const rows = readMaster_(getSheet_(MASTER_SHEET));
   const counts = countsFromRows_(rows);
   const tz = Session.getScriptTimeZone();
   const now = Utilities.formatDate(new Date(), tz, 'yyyy/MM/dd HH:mm:ss');

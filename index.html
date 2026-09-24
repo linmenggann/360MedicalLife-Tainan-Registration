@@ -1767,7 +1767,7 @@ async function submitRegistration(payload){
     if (dup) return { ok: false, error: "duplicate", message: `${sameEmp(dup) ? "此人事號" : "此身分證號"}已報名${dup.session}，每人限報名一個梯次；如需更改梯次請聯絡教學部（分機 57440）。` };
     list.push({ ...payload, ts: new Date().toISOString() });
     localStorage.setItem(LS_KEY, JSON.stringify(list));
-    return { ok: true };
+    return { ok: true, registered: true, session: payload.session };
   }
   // Apps Script：使用 text/plain 避免 CORS preflight
   const res = await fetch(CONFIG.API_URL, {
@@ -1812,8 +1812,23 @@ document.getElementById("regForm").addEventListener("submit", async e => {
   btn.disabled = true;
   btn.textContent = "送出中…";
   try {
-    const result = await submitRegistration(payload);
-    if (result && result.ok){
+    let result = await submitRegistration(payload);
+    // Google 偶爾會把 POST 轉成 GET 執行，回來的是名額資料而不是報名結果（沒有 registered 標記）。
+    // 這時資料可能沒有寫入，所以再送一次確認：寫入成功 → registered；若第一次其實已寫入 → 會回「已報名同一梯次」。
+    if (result && result.ok && !result.registered){
+      btn.textContent = "確認中…";
+      result = await submitRegistration(payload);
+      if (result && result.error === "duplicate"){
+        const existing = result.existingSession || ((String(result.message || "").match(/已報名(第.梯次)/) || [])[1]);
+        const sameEmp = !result.existingEmpId || normalizeId(result.existingEmpId) === normalizeId(payload.empId);
+        if (existing === payload.session && sameEmp) result = { ok: true, registered: true, counts: result.counts };
+      }
+    }
+    if (result && result.ok && !result.registered){
+      msg.className = "form-msg error";
+      msg.textContent = "伺服器暫時無法確認報名結果。請稍候一分鐘後重新整理頁面再送出一次；若顯示「已報名」即代表報名成功，或直接聯絡教學部（分機 57440）確認。";
+      msg.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (result && result.ok){
       if (result.counts) setCounts(applyCounts(result.counts), "api");
       else setCounts(demoCounts(), "demo");
       showSuccess(payload);
