@@ -1671,6 +1671,20 @@ function renderQuota(){
 }
 
 /* ---------- 驗證 ---------- */
+/**
+ * 識別碼正規化（人事號、身分證號）。後端 apps-script/Code.gs 使用完全相同的函式。
+ * 8607e7、 8607E7 、８６０７Ｅ７、‘8607E7、 '8607E7 → 8607E7
+ */
+function normalizeId(v) {
+  return String(v == null ? '' : v)
+    .normalize('NFKC')                      // 全形轉半形：８６０７Ｅ７、＇
+    .replace(/[​-‍﻿]/g, '')  // 移除零寬字元（複製貼上常夾帶）
+    .trim()
+    .replace(/^['‘’]+/, '')                 // 移除開頭撇號，含 iPhone 智慧型標點的彎撇號
+    .trim()
+    .toUpperCase();
+}
+
 function validTaiwanId(id){
   id = (id || "").toUpperCase().trim();
   if (!/^[A-Z][1289]\d{8}$/.test(id)) return false;
@@ -1694,7 +1708,8 @@ function validateForm(){
   ok = setInvalid(f.session, !f.session.value) && ok;
   const identity = f.identity;
   ok = setInvalid(identity, !identity.value || remaining(identity.value, f.session.value) === 0) && ok;
-  ["unit","name","empId","title","phone"].forEach(n => { ok = setInvalid(f[n], !f[n].value.trim()) && ok; });
+  ["unit","name","title","phone"].forEach(n => { ok = setInvalid(f[n], !f[n].value.trim()) && ok; });
+  ok = setInvalid(f.empId, !normalizeId(f.empId.value)) && ok;
   ok = setInvalid(f.email, !f.email.value.trim() || !f.email.checkValidity()) && ok;
 
   const birth = f.birth;
@@ -1706,7 +1721,7 @@ function validateForm(){
   }
   ok = setInvalid(birth, birthBad) && ok;
 
-  ok = setInvalid(f.nationalId, !validTaiwanId(f.nationalId.value)) && ok;
+  ok = setInvalid(f.nationalId, !validTaiwanId(normalizeId(f.nationalId.value))) && ok;
 
   const mealChecked = f.querySelector("input[name=meal]:checked");
   ok = setInvalid(document.getElementById("mealGroup"), !mealChecked) && ok;
@@ -1732,6 +1747,11 @@ document.getElementById("regForm").addEventListener("input", e => {
   if (field) field.classList.remove("invalid");
 });
 document.getElementById("nationalId").addEventListener("input", e => { e.target.value = e.target.value.toUpperCase(); });
+// 離開欄位時即時顯示正規化後的值，讓填寫者看到實際會存入的人事號／身分證號
+["empId", "nationalId"].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener("blur", () => { const v = normalizeId(el.value); if (el.value !== v) el.value = v; });
+});
 document.getElementById("birth").max = new Date().toISOString().slice(0, 10);
 
 /* ---------- 送出 ---------- */
@@ -1742,8 +1762,9 @@ async function submitRegistration(payload){
     if (remaining(payload.identity, payload.session) === 0) return { ok: false, error: "full" };
     let list = [];
     try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch(e){}
-    const dup = list.find(r => r.empId.toUpperCase() === payload.empId.toUpperCase() || r.nationalId === payload.nationalId);
-    if (dup) return { ok: false, error: "duplicate", message: `${dup.empId.toUpperCase() === payload.empId.toUpperCase() ? "此人事號" : "此身分證號"}已報名${dup.session}，每人限報名一個梯次；如需更改梯次請聯絡教學部（分機 57440）。` };
+    const sameEmp = r => normalizeId(r.empId) === normalizeId(payload.empId);
+    const dup = list.find(r => sameEmp(r) || normalizeId(r.nationalId) === normalizeId(payload.nationalId));
+    if (dup) return { ok: false, error: "duplicate", message: `${sameEmp(dup) ? "此人事號" : "此身分證號"}已報名${dup.session}，每人限報名一個梯次；如需更改梯次請聯絡教學部（分機 57440）。` };
     list.push({ ...payload, ts: new Date().toISOString() });
     localStorage.setItem(LS_KEY, JSON.stringify(list));
     return { ok: true };
@@ -1777,12 +1798,12 @@ document.getElementById("regForm").addEventListener("submit", async e => {
     identity: f.identity.value,
     unit: f.unit.value.trim(),
     name: f.name.value.trim(),
-    empId: f.empId.value.trim(),
+    empId: normalizeId(f.empId.value),
     title: f.title.value.trim(),
     phone: f.phone.value.trim(),
     email: f.email.value.trim(),
     birth: f.birth.value,
-    nationalId: f.nationalId.value.trim().toUpperCase(),
+    nationalId: normalizeId(f.nationalId.value),
     meal: f.querySelector("input[name=meal]:checked").value
   };
 

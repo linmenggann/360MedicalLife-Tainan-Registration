@@ -229,7 +229,7 @@ function registrationsFromRows_(rows) {
       identity: String(r[COL['身分'] - 1]).trim(),
       unit: String(r[COL['單位'] - 1]).trim(),
       name: String(r[COL['姓名'] - 1]).trim(),
-      empId: txt_(r[COL['人事號'] - 1]),
+      empId: normalizeId(r[COL['人事號'] - 1]),
       title: String(r[COL['職稱'] - 1]).trim(),
       meal: String(r[COL['餐食'] - 1]).trim()
     };
@@ -310,9 +310,10 @@ function doPost(e) {
     }
     const session = String(d.session).trim();
     const identity = String(d.identity).trim();
-    const empId = String(d.empId).trim();
-    const nationalId = String(d.nationalId).trim().toUpperCase();
+    const empId = normalizeId(d.empId);
+    const nationalId = normalizeId(d.nationalId);
 
+    if (!empId) return json_({ ok: false, error: 'invalid', message: '人事號不可空白' });
     if (SESSIONS.indexOf(session) === -1) return json_({ ok: false, error: 'invalid', message: '梯次不正確' });
     if (LIMITS[identity] === undefined) return json_({ ok: false, error: 'invalid', message: '身分不正確' });
     if (!/^[A-Z][1289]\d{8}$/.test(nationalId)) return json_({ ok: false, error: 'invalid', message: '身分證號格式不正確' });
@@ -325,8 +326,8 @@ function doPost(e) {
     // 重複報名檢查（總表，跨所有梯次）：每人限報名一個梯次
     // 以「人事號」或「身分證號」任一相同即視為同一人
     for (const r of rows) {
-      const sameEmp = txt_(r[COL['人事號'] - 1]).toUpperCase() === empId.toUpperCase();
-      const sameId = txt_(r[COL['身分證號'] - 1]).toUpperCase() === nationalId;
+      const sameEmp = normalizeId(r[COL['人事號'] - 1]) === empId;
+      const sameId = normalizeId(r[COL['身分證號'] - 1]) === nationalId;
       if (sameEmp || sameId) {
         const which = sameEmp ? '此人事號' : '此身分證號';
         return json_({
@@ -408,18 +409,36 @@ function processRegistrationQueue() {
   }
 }
 
-/** 讀取文字欄：去掉可能被保留成字面字元的前置撇號，並去除前後空白 */
+/**
+ * 識別碼正規化（人事號、身分證號）。前端 index.html 使用完全相同的函式。
+ * 寫入與比對一律使用正規化值：8607e7、 8607E7 、８６０７Ｅ７、‘8607E7、 '8607E7 → 8607E7
+ */
+function normalizeId(v) {
+  return String(v == null ? '' : v)
+    .normalize('NFKC')                      // 全形轉半形：８６０７Ｅ７、＇
+    .replace(/[​-‍﻿]/g, '')  // 移除零寬字元（複製貼上常夾帶）
+    .trim()
+    .replace(/^['‘’]+/, '')                 // 移除開頭撇號，含 iPhone 智慧型標點的彎撇號
+    .trim()
+    .toUpperCase();
+}
+
+// 屬於識別碼、需要正規化（含轉大寫）的文字欄；其餘文字欄只做「去撇號 + trim」
+const ID_COLS = ['人事號', '身分證號'];
+
+/** 讀取其餘文字欄（電話／分機、出生日期）：去掉開頭撇號並去除前後空白，不轉大寫 */
 function txt_(v) {
-  return String(v == null ? '' : v).replace(/^'/, '').trim();
+  return String(v == null ? '' : v).replace(/^['‘’]+/, '').trim();
 }
 
 /**
- * 寫入文字欄用的值：去掉前置撇號與前後空白，日期物件轉成 yyyy-MM-dd。
+ * 寫入文字欄用的值：識別碼欄用 normalizeId；其餘文字欄去撇號與空白，日期物件轉成 yyyy-MM-dd。
  * 不可加前置撇號：Apps Script 以 setValues 寫入時，撇號會被當成字面字元存進儲存格（顯示 'B509A9），
  * 人工閱讀、下載 Excel 或匯入其他系統都會多一個撇號。
  */
-function asSheetText_(v) {
-  return (v instanceof Date) ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : txt_(v);
+function asSheetText_(v, header) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return ID_COLS.indexOf(header) !== -1 ? normalizeId(v) : txt_(v);
 }
 
 /**
@@ -431,7 +450,7 @@ function appendRow_(sheet, row) {
   const r = sheet.getLastRow() + 1;
   const out = row.slice(0, HEADERS.length);
   while (out.length < HEADERS.length) out.push('');
-  TEXT_COLS.forEach(h => { out[COL[h] - 1] = asSheetText_(out[COL[h] - 1]); });
+  TEXT_COLS.forEach(h => { out[COL[h] - 1] = asSheetText_(out[COL[h] - 1], h); });
   TEXT_COLS.forEach(h => sheet.getRange(r, COL[h]).setNumberFormat('@'));
   sheet.getRange(r, COL['報名時間']).setNumberFormat('yyyy/MM/dd HH:mm:ss');
   sheet.getRange(r, 1, 1, out.length).setValues([out]);
@@ -439,19 +458,21 @@ function appendRow_(sheet, row) {
 }
 
 /**
- * 修復既有資料：把文字欄（人事號、手機簡碼/分機、出生日期、身分證號）整欄以乾淨的純文字重新寫入。
- * 先前版本以撇號寫入，造成儲存格出現 'B509A9。撇號可能存在「值」裡，也可能是儲存格的文字標記，
- * 因此這裡不做判斷，一律先清除格式 → 設為純文字 → 重新寫入去掉撇號的值，確保儲存格只剩乾淨原值。
+ * 修復既有資料：把文字欄（人事號、手機簡碼/分機、出生日期、身分證號）整欄以正規化後的純文字重新寫入。
+ * 撇號可能存在「值」裡，也可能是儲存格的文字標記，因此不做判斷，一律先設為純文字 → 重新寫入正規化值。
+ * 已經被試算表轉成數字的儲存格（例如 86070000000、掉了開頭 0 的電話）不得自動推算還原：
+ * 維持原值不動，列出清單請承辦人對照人事資料人工修正。
  */
 function fixApostrophes() {
   let cellsWithMark = 0, rewritten = 0;
-  const details = [];
+  const details = [], numeric = [];
   [MASTER_SHEET].concat(SESSIONS).forEach(name => {
     const sheet = ss_().getSheetByName(name);
     if (!sheet) return;
     const last = sheet.getLastRow();
     if (last < 2) return;
     const rows = last - 1;
+    const names = sheet.getRange(2, COL['姓名'], rows, 1).getValues();
     let marked = 0;
     TEXT_COLS.forEach(h => {
       const range = sheet.getRange(2, COL[h], rows, 1);
@@ -460,8 +481,12 @@ function fixApostrophes() {
       const out = values.map((row, i) => {
         const v = row[0];
         const f = formulas[i][0];
-        if ((typeof v === 'string' && v.charAt(0) === "'") || (typeof f === 'string' && f.charAt(0) === "'")) marked++;
-        return [asSheetText_(v)];                  // 去掉前置撇號與空白；日期物件轉 yyyy-MM-dd
+        if (typeof v === 'number') {               // 已被轉成數字：不推算，保留原值並列入清單
+          numeric.push(name + ' 第 ' + (i + 2) + ' 列｜' + String(names[i][0]).trim() + '｜' + h + '＝' + v);
+          return [v];
+        }
+        if ((typeof v === 'string' && /^['‘’]/.test(v)) || (typeof f === 'string' && f.charAt(0) === "'")) marked++;
+        return [asSheetText_(v, h)];               // 正規化；日期物件轉 yyyy-MM-dd
       });
       range.clearFormat();                         // 先回到自動格式，避免舊格式影響
       range.setNumberFormat('@');                  // 再設為純文字，寫入時不做型別判讀
@@ -473,12 +498,15 @@ function fixApostrophes() {
   });
   SpreadsheetApp.flush();
   clearCache_();
-  const msg = '已重新寫入文字欄（人事號、手機簡碼/分機、出生日期、身分證號）\n' +
-    details.join('\n') + '\n\n共處理 ' + rewritten + ' 格，其中原本帶撇號 ' + cellsWithMark + ' 格。\n' +
-    '若畫面仍顯示撇號，請重新整理試算表；仍有問題請執行「診斷文字欄內容」並回報結果。';
+  let msg = '已以正規化值重新寫入文字欄（人事號、手機簡碼/分機、出生日期、身分證號）\n' +
+    details.join('\n') + '\n\n共處理 ' + rewritten + ' 格，其中原本帶撇號 ' + cellsWithMark + ' 格。';
+  if (numeric.length) {
+    msg += '\n\n以下 ' + numeric.length + ' 格已被轉成數字，系統不自動還原，請對照人事資料人工修正：\n' + numeric.join('\n');
+  }
+  msg += '\n\n若畫面仍顯示撇號，請重新整理試算表；仍有問題請執行「診斷文字欄內容」並回報結果。';
   Logger.log(msg);
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
-  return cellsWithMark;
+  return { marked: cellsWithMark, numeric: numeric };
 }
 
 /**
@@ -518,9 +546,15 @@ function testTextColumns() {
   const old = ss.getSheetByName(name);
   if (old) ss.deleteSheet(old);
   const sheet = ensureSheet_(name);
+  // full：四個文字欄都檢查；其餘只檢查人事號是否正規化成 8607E7
   const cases = [
-    { empId: '8607E7', phone: '0912345678', birth: '1985-03-04', nid: 'A123456789' },
-    { empId: 'B41242', phone: '57440',      birth: '1990-12-31', nid: 'B223456789' }
+    { empId: '8607E7',    exp: '8607E7', phone: '0912345678', birth: '1985-03-04', nid: 'A123456789', full: true },
+    { empId: 'B41242',    exp: 'B41242', phone: '57440',      birth: '1990-12-31', nid: 'B223456789', full: true },
+    { empId: '8607e7',    exp: '8607E7' },
+    { empId: ' 8607E7 ',  exp: '8607E7' },
+    { empId: '８６０７Ｅ７', exp: '8607E7' },
+    { empId: '‘8607E7',   exp: '8607E7' },
+    { empId: " '8607E7",  exp: '8607E7' }
   ];
   const lines = [];
   try {
@@ -531,17 +565,19 @@ function testTextColumns() {
       row[COL['身分'] - 1] = '臨床教師';
       row[COL['姓名'] - 1] = '驗收測試';
       row[COL['人事號'] - 1] = c.empId;
-      row[COL['手機簡碼/分機'] - 1] = c.phone;
-      row[COL['出生日期'] - 1] = c.birth;
-      row[COL['身分證號'] - 1] = c.nid;
+      row[COL['手機簡碼/分機'] - 1] = c.phone || '57440';
+      row[COL['出生日期'] - 1] = c.birth || '1985-03-04';
+      row[COL['身分證號'] - 1] = c.nid || 'A123456789';
       const r = appendRow_(sheet, row);
       SpreadsheetApp.flush();
-      const got = sheet.getRange(r, 1, 1, HEADERS.length).getValues()[0];
-      const shown = sheet.getRange(r, 1, 1, HEADERS.length).getDisplayValues()[0];
-      [['人事號', c.empId], ['手機簡碼/分機', c.phone], ['出生日期', c.birth], ['身分證號', c.nid]].forEach(([h, exp]) => {
-        const v = got[COL[h] - 1], d = shown[COL[h] - 1];
-        const pass = typeof v === 'string' && v === exp && d === exp;
-        lines.push((pass ? 'PASS' : 'FAIL') + '｜' + h + '｜輸入 ' + exp + '｜儲存值 ' + JSON.stringify(v) + '（' + typeof v + '）｜顯示 ' + d);
+      const checks = [['人事號', c.exp]];
+      if (c.full) checks.push(['手機簡碼/分機', c.phone], ['出生日期', c.birth], ['身分證號', c.nid]);
+      checks.forEach(([h, exp]) => {
+        const cell = sheet.getRange(r, COL[h]);
+        const v = cell.getValue(), d = cell.getDisplayValue(), f = cell.getFormula(), fmt = cell.getNumberFormat();
+        const pass = typeof v === 'string' && v === exp && d === exp && fmt === '@' && String(f).charAt(0) !== "'";
+        lines.push((pass ? 'PASS' : 'FAIL') + '｜' + h + '｜輸入 ' + JSON.stringify(h === '人事號' ? c.empId : exp) +
+          '｜儲存值 ' + JSON.stringify(v) + '（' + typeof v + '）｜顯示 ' + d + '｜格式 ' + fmt + (f ? '｜編輯列 ' + f : ''));
       });
     });
   } finally {
@@ -565,7 +601,7 @@ function rowToReg_(row) {
     identity: String(row[COL['身分'] - 1]).trim(),
     unit: String(row[COL['單位'] - 1]).trim(),
     name: String(row[COL['姓名'] - 1]).trim(),
-    empId: txt_(row[COL['人事號'] - 1]),
+    empId: normalizeId(row[COL['人事號'] - 1]),
     title: String(row[COL['職稱'] - 1]).trim(),
     email: String(row[COL['E-mail'] - 1]).trim(),
     meal: String(row[COL['餐食'] - 1]).trim()
@@ -798,7 +834,7 @@ function parseSessionInput_(text) {
 }
 
 function sameEmpId_(a, b) {
-  return txt_(a).toUpperCase() === txt_(b).toUpperCase();
+  return normalizeId(a) === normalizeId(b);
 }
 
 /** 試算表選單：輸入人事號與要加報的梯次，確認後寫入並寄出通知信 */
@@ -806,7 +842,7 @@ function adminAddSessionsDialog() {
   const ui = SpreadsheetApp.getUi();
   const r1 = ui.prompt('管理者加報梯次', '請輸入已報名者的人事號：', ui.ButtonSet.OK_CANCEL);
   if (r1.getSelectedButton() !== ui.Button.OK) return;
-  const empId = r1.getResponseText().trim();
+  const empId = normalizeId(r1.getResponseText());
   if (!empId) return;
 
   const mine = readMaster_(getSheet_(MASTER_SHEET)).filter(r => sameEmpId_(r[COL['人事號'] - 1], empId));
@@ -849,7 +885,7 @@ function adminAddSessions(empId, targetSessions) {
     if (!mine.length) return { added, skipped, message: '總表找不到人事號「' + empId + '」的報名資料。' };
     const baseRow = mine[0];
     name = String(baseRow[COL['姓名'] - 1]).trim();
-    shownId = txt_(baseRow[COL['人事號'] - 1]);
+    shownId = normalizeId(baseRow[COL['人事號'] - 1]);
     const identity = String(baseRow[COL['身分'] - 1]).trim();
     const original = mine.map(r => String(r[COL['梯次'] - 1]).trim());
     const has = original.slice();

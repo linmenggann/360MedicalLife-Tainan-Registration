@@ -163,7 +163,7 @@ tr.total td{font-weight:700;background:#fffaf0}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
         匯出名單 Excel
       </button>
-      <button class="btn" id="csvBtn" type="button" disabled title="名單資料載入後可匯出">
+      <button class="btn" id="csvBtn" type="button" disabled title="資料交換用純值 CSV。用 Excel 開啟請走「資料 > 從文字/CSV」並把人事號欄設為文字；要直接開啟請用「匯出名單 Excel」">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
         匯出名單 CSV
       </button>
@@ -695,26 +695,21 @@ function renderRoster(){
 ["fSession","fIdentity","fMeal"].forEach(id => $("#" + id).addEventListener("change", renderRoster));
 $("#fSearch").addEventListener("input", renderRoster);
 
-/* ---------- CSV 匯出（不含敏感欄位；Excel 開啟不轉換人事號） ---------- */
-// Excel 開啟 CSV 會自動轉換「看起來像數字、科學記號、日期」的字串：8607E7 → 8.61E+10、0912 → 912。
-// 人事號一律、其他欄位遇到可能被轉換的值時，輸出成 ="值"，Excel 會當成文字原樣顯示。
-// 以 = + - @ 開頭的值加前置撇號，避免被 Excel 當成公式執行。
+/* ---------- CSV 匯出（資料交換用；不含敏感欄位） ---------- */
+// CSV 只放純值：UTF-8 含 BOM，每格以雙引號包住、內部雙引號加倍，不做任何包裝或改寫
+// （不用 ="…"、不加前置撇號、不加 Tab）。這樣其他系統或程式讀到的就是原值。
+// 用 Excel 開啟時請走「資料 > 從文字/CSV」，並把「人事號」欄設為「文字」；直接雙擊開啟，Excel 可能把 8607E7 轉成科學記號。
+// 給人看或要用 Excel 直接開啟，請改用上方的「匯出名單 Excel」（.xlsx）。
 const CSV_HEAD = ["報名時間","梯次","身分","單位","姓名","人事號","職稱","餐食"];
-const CSV_FORCE_TEXT = new Set(["人事號"]);
-const EXCEL_COERCIBLE = /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?%?\s*$|^\s*0\d|^\s*\d{1,4}[-\/.]\d{1,2}([-\/.]\d{1,4})?\s*$|^\s*\d{1,2}:\d{2}/;
-function csvCell(v, forceText){
-  let s = String(v ?? "");
-  if (forceText || EXCEL_COERCIBLE.test(s)) s = '="' + s.replace(/"/g, '""') + '"';
-  else if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-  return '"' + s.replace(/"/g, '""') + '"';
+function csvCell(v){
+  return '"' + String(v ?? "").replace(/"/g, '""') + '"';
 }
 function buildRosterCsv(rows){
   const body = rows.map(r => {
     const d = new Date(r.ts);
     return [isNaN(d) ? r.ts : d.toLocaleString("zh-TW"), r.session, r.identity, r.unit, r.name, r.empId, r.title, r.meal];
   });
-  const lines = [CSV_HEAD.map(h => csvCell(h, false)).join(",")]
-    .concat(body.map(line => line.map((v, i) => csvCell(v, CSV_FORCE_TEXT.has(CSV_HEAD[i]))).join(",")));
+  const lines = [CSV_HEAD.map(csvCell).join(",")].concat(body.map(line => line.map(csvCell).join(",")));
   return "﻿" + lines.join("\r\n");   // BOM：讓 Excel 以 UTF-8 讀取中文
 }
 function downloadCsv(text, filename){
