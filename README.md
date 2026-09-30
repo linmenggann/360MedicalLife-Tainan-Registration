@@ -27,14 +27,19 @@ apps-script/Code.gs     Google Apps Script 後端（名額即時統計、寫入 
 
 ## 名額限制（每梯次各自計算）
 
-| 身分 | 每梯次限額 |
-|---|---|
-| 西醫UGY | 8 |
-| 西醫PGY | 10 |
-| 醫事職類PGY | 9 |
-| 臨床教師 | 8 |
+| 身分 | 第一梯次 10/17–10/18 | 第二梯次 11/14–11/15 | 第三梯次 11/21–11/22 |
+|---|---|---|---|
+| 西醫UGY | 8 | 8 | 8 |
+| 西醫PGY | 10 | 10 | 10 |
+| 醫事職類PGY | 9 | 9 | 9 |
+| 臨床教師 | 8 | 9 | 9 |
+| **合計** | **35** | **36** | **36** |
 
-若要改成三梯次共用名額，將 `index.html` 的 `CONFIG.QUOTA_SCOPE` 與 `Code.gs` 的 `QUOTA_SCOPE` 都改為 `"total"`。
+（2026-09-30 調整：第二、第三梯次臨床教師由 8 人改為 9 人。）
+
+限額設定在 `Code.gs` 的 `SESSION_LIMITS`，名額 API 會回傳 `sessionLimits`，報名網頁與儀表板以後端回傳值為準；
+兩個網頁內也各有一份相同的 `SESSION_LIMITS`，只在尚未取得後端資料時使用。
+若要改成三梯次共用名額，將 `index.html` 的 `CONFIG.QUOTA_SCOPE` 與 `Code.gs` 的 `QUOTA_SCOPE` 都改為 `"total"`，此時改用 `LIMITS`。
 
 ## Google Sheets 設定
 

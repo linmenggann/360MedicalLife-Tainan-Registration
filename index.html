@@ -1404,6 +1404,22 @@ const IDENTITIES = [
   { key: "醫事職類PGY", limit: 9,  color: "#3f6f86" },
   { key: "臨床教師",    limit: 8,  color: "#a7781f" }
 ];
+// 各梯次限額（2026-09-30：第二、第三梯次臨床教師 9 人）。載入名額後以後端回傳的 sessionLimits 為準
+let SESSION_LIMITS = {
+  "第一梯次": { "西醫UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 8 },
+  "第二梯次": { "西醫UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 },
+  "第三梯次": { "西醫UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 }
+};
+function limitOf(identity, session){
+  const s = SESSION_LIMITS[session];
+  if (CONFIG.QUOTA_SCOPE !== "total" && s && s[identity] != null) return Number(s[identity]);
+  const item = IDENTITIES.find(i => i.key === identity);
+  return item ? item.limit : 0;
+}
+function mergeSessionLimits(src){
+  if (!src) return;
+  Object.keys(src).forEach(s => { SESSION_LIMITS[s] = Object.assign({}, SESSION_LIMITS[s] || {}, src[s]); });
+}
 const LS_KEY = "tainan360_demo_registrations";
 
 function emptyCounts(){
@@ -1510,11 +1526,13 @@ function parseCsv(text){
 }
 function countsFromStatsRows(rows){
   if (!rows.length || String(rows[0][0]).trim() !== "類型") throw new Error("統計資料格式不符");
-  const c = emptyCounts(); let updated = "";
+  const c = emptyCounts(), limits = {}; let updated = "";
   rows.slice(1).forEach(([type, k1, k2, v, ts]) => {
     if (type === "名額" && c[k1] && c[k1][k2] !== undefined) c[k1][k2] = Number(v) || 0;
+    if (type === "梯次限額" && k1 && k2 && v !== "") { (limits[k1] = limits[k1] || {})[k2] = Number(v); }
     if (ts) updated = ts;
   });
+  mergeSessionLimits(limits);
   const t = updated ? new Date(updated.replace(/-/g, "/")) : null;
   return { counts: c, time: (t && !isNaN(t)) ? t : null };
 }
@@ -1581,6 +1599,7 @@ async function fetchCounts(){
     const data = await res.json();
     if (!data || !data.counts) throw new Error("名額資料格式不符");
     apiDone = true;
+    mergeSessionLimits(data.sessionLimits);
     setCounts(applyCounts(data.counts), "api");
     backendOnline = true;
   } catch(err){
@@ -1606,9 +1625,8 @@ function used(identity, session){
   return (counts[session] && counts[session][identity]) || 0;
 }
 function remaining(identity, session){
-  const item = IDENTITIES.find(i => i.key === identity);
-  if (!item) return 0;
-  return Math.max(0, item.limit - used(identity, session));
+  if (!IDENTITIES.some(i => i.key === identity)) return 0;
+  return Math.max(0, limitOf(identity, session) - used(identity, session));
 }
 
 /* ---------- 名額：畫面 ---------- */
@@ -1628,8 +1646,9 @@ function renderQuota(){
   const grid = document.getElementById("quotaGrid");
   grid.innerHTML = IDENTITIES.map(i => {
     const left = remaining(i.key, quotaView);
-    const usedN = i.limit - left;
-    const pct = known ? Math.round(usedN / i.limit * 100) : 0;
+    const lim = limitOf(i.key, quotaView);
+    const usedN = lim - left;
+    const pct = known && lim ? Math.round(usedN / lim * 100) : 0;
     return `
       <div class="quota-card ${known && left === 0 ? "is-full" : ""} ${known ? "" : "is-loading"}" style="--q-color:${i.color}">
         <div class="q-name">${i.key}</div>

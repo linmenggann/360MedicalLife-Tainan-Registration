@@ -35,12 +35,27 @@ const SESSION_DATES = {
   '第二梯次': '115/11/14–11/15',
   '第三梯次': '115/11/21–11/22'
 };
+// 身分清單與預設限額（三梯次共用名額時使用這組）
 const LIMITS = {
   '西醫UGY': 8,
   '西醫PGY': 10,
   '醫事職類PGY': 9,
   '臨床教師': 8
 };
+// 各梯次限額（2026-09-30 調整：第二、第三梯次臨床教師改為 9 人）
+// index.html 與 dashboard.html 也有同一份，並以後端回傳的 sessionLimits 為準
+const SESSION_LIMITS = {
+  '第一梯次': { '西醫UGY': 8, '西醫PGY': 10, '醫事職類PGY': 9, '臨床教師': 8 },
+  '第二梯次': { '西醫UGY': 8, '西醫PGY': 10, '醫事職類PGY': 9, '臨床教師': 9 },
+  '第三梯次': { '西醫UGY': 8, '西醫PGY': 10, '醫事職類PGY': 9, '臨床教師': 9 }
+};
+/** 某梯次某身分的限額；三梯次共用名額時用 LIMITS */
+function limitOf_(session, identity) {
+  if (QUOTA_SCOPE !== 'total' && SESSION_LIMITS[session] && SESSION_LIMITS[session][identity] !== undefined) {
+    return SESSION_LIMITS[session][identity];
+  }
+  return LIMITS[identity];
+}
 // "session"：各梯次分別計算名額；"total"：三梯次共用名額（需與 index.html 的 CONFIG.QUOTA_SCOPE 一致）
 const QUOTA_SCOPE = 'session';
 
@@ -172,7 +187,7 @@ function onOpen() {
 function showCounts() {
   const counts = getCounts_(getSheet_(MASTER_SHEET));
   const lines = SESSIONS.map(s => s + '（' + SESSION_DATES[s] + '）：' +
-    Object.keys(LIMITS).map(k => k + ' ' + counts[s][k] + '/' + LIMITS[k]).join('、'));
+    Object.keys(LIMITS).map(k => k + ' ' + counts[s][k] + '/' + limitOf_(s, k)).join('、'));
   SpreadsheetApp.getUi().alert('各梯次已報名人數\n\n' + lines.join('\n'));
 }
 
@@ -255,6 +270,7 @@ function countsPayload_(counts) {
     ok: true,
     counts: counts,
     limits: LIMITS,
+    sessionLimits: SESSION_LIMITS,
     sessions: SESSIONS,
     quotaScope: QUOTA_SCOPE,
     statsSpreadsheetId: PropertiesService.getScriptProperties().getProperty(STATS_PROP) || '',
@@ -359,7 +375,7 @@ function doPost(e) {
     }
 
     // 名額檢查
-    if (usedCount_(counts, session, identity) >= LIMITS[identity]) {
+    if (usedCount_(counts, session, identity) >= limitOf_(session, identity)) {
       return json_({ ok: false, error: 'full', counts: counts, message: session + '的「' + identity + '」名額已額滿，請改選其他梯次或洽教學部詢問候補。' });
     }
 
@@ -920,7 +936,7 @@ function adminAddSessions(empId, targetSessions) {
     targetSessions.forEach(s => {
       if (SESSIONS.indexOf(s) === -1) { skipped.push(s + '（梯次名稱不正確）'); return; }
       if (has.indexOf(s) !== -1) { skipped.push(s + '（已報名）'); return; }
-      if (usedCount_(counts, s, identity) >= LIMITS[identity]) { skipped.push(s + '（' + identity + '名額已滿）'); return; }
+      if (usedCount_(counts, s, identity) >= limitOf_(s, identity)) { skipped.push(s + '（' + identity + '名額已滿）'); return; }
 
       const row = baseRow.slice(0, HEADERS.length);   // 文字欄的撇號與日期轉文字由 appendRow_ 統一處理
       row[COL['報名時間'] - 1] = new Date();
@@ -1056,6 +1072,7 @@ function publishStats() {
 
   out.push(['設定', 'quotaScope', '', QUOTA_SCOPE, now]);
   Object.keys(LIMITS).forEach(k => out.push(['限額', k, '', LIMITS[k], now]));
+  SESSIONS.forEach(s => Object.keys(LIMITS).forEach(k => out.push(['梯次限額', s, k, limitOf_(s, k), now])));
   SESSIONS.forEach(s => Object.keys(LIMITS).forEach(k => out.push(['名額', s, k, counts[s][k], now])));
 
   const meals = {}, daily = {}, units = {};
