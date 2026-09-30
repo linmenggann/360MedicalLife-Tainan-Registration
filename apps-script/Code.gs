@@ -175,6 +175,8 @@ function onOpen() {
     .addSeparator()
     .addItem('預覽通知信（寄給自己）', 'previewNotificationEmail')
     .addItem('補寄尚未通知的報名者', 'sendPendingNotifications')
+    .addItem('預覽長官及工作人員通知信（寄給自己）', 'previewStaffNotificationDialog')
+    .addItem('寄送長官及工作人員行前資訊', 'sendStaffNotificationsDialog')
     .addSeparator()
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
     .addSeparator()
@@ -991,6 +993,134 @@ function markSessionNotified_(reg, stamp) {
       return;
     }
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 長官及工作人員：寄送報名成功／行前資訊                              */
+/* 名單放在「另一份」Google 試算表（第一梯次／第二梯次／第三梯次分頁），  */
+/* 不寫入報名試算表、不計入名額；寄送時間只記在名單試算表。             */
+/* ------------------------------------------------------------------ */
+const STAFF_PROP = 'STAFF_SPREADSHEET_ID';
+
+/** 從網址或 ID 取出試算表 ID */
+function spreadsheetIdFrom_(text) {
+  const t = String(text || '').trim();
+  const m = t.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  return m ? m[1] : t;
+}
+
+/** 讀取名單試算表三個梯次分頁；回傳每位收件人與其所在列 */
+function readStaffList_(staffSs) {
+  const list = [];
+  SESSIONS.forEach(session => {
+    const sh = staffSs.getSheetByName(session);
+    if (!sh) return;
+    const last = sh.getLastRow();
+    if (last < 2) return;
+    let lastCol = sh.getLastColumn();
+    const head = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+    const col = h => head.indexOf(h);
+    if (col('姓名') < 0 || col('E-mail') < 0) throw new Error('「' + session + '」分頁缺少「姓名」或「E-mail」欄位');
+    let sentIdx = col('通知寄送時間');
+    if (sentIdx < 0) {                                   // 沒有寄送時間欄就在最後補一欄
+      lastCol += 1; sentIdx = lastCol - 1;
+      sh.getRange(1, lastCol).setValue('通知寄送時間').setFontWeight('bold');
+    }
+    const rows = sh.getRange(2, 1, last - 1, lastCol).getValues();
+    const get = (r, h) => col(h) >= 0 ? String(r[col(h)] == null ? '' : r[col(h)]).trim() : '';
+    rows.forEach((r, i) => {
+      const name = get(r, '姓名'), email = get(r, 'E-mail');
+      if (!name && !email) return;
+      list.push({
+        sheet: sh, row: i + 2, sentCol: sentIdx + 1, sent: !!r[sentIdx],
+        reg: {
+          session: get(r, '梯次') || session, identity: get(r, '身分'), unit: get(r, '單位'), name: name,
+          empId: normalizeId(get(r, '人事號')), title: get(r, '職稱'), email: email, meal: get(r, '餐食') || '葷食'
+        }
+      });
+    });
+  });
+  return list;
+}
+
+/** 開啟名單試算表：先用上次記住的 ID，沒有就請使用者貼網址 */
+function openStaffSpreadsheet_(ui, askAlways) {
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty(STAFF_PROP) || '';
+  if (!id || askAlways) {
+    const r = ui.prompt('長官及工作人員名單',
+      '請貼上名單 Google 試算表的網址（需含「第一梯次」「第二梯次」「第三梯次」分頁）' + (id ? '\n留空則沿用上次的名單試算表。' : ''),
+      ui.ButtonSet.OK_CANCEL);
+    if (r.getSelectedButton() !== ui.Button.OK) return null;
+    const input = spreadsheetIdFrom_(r.getResponseText());
+    if (input) id = input;
+  }
+  if (!id) return null;
+  if (id === SPREADSHEET_ID) {
+    ui.alert('這是報名試算表。長官及工作人員名單請放在另一份試算表，避免混入報名資料。');
+    return null;
+  }
+  const staffSs = SpreadsheetApp.openById(id);
+  props.setProperty(STAFF_PROP, id);
+  return staffSs;
+}
+
+/** 選單：寄送長官及工作人員的報名成功／行前資訊（已寄過的會略過） */
+function sendStaffNotificationsDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const staffSs = openStaffSpreadsheet_(ui, true);
+  if (!staffSs) return;
+  const list = readStaffList_(staffSs);
+  const bad = list.filter(x => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x.reg.email));
+  const pending = list.filter(x => !x.sent && bad.indexOf(x) === -1);
+  if (!pending.length) {
+    ui.alert('沒有需要寄送的對象。\n名單共 ' + list.length + ' 位，已寄過 ' + list.filter(x => x.sent).length + ' 位' +
+      (bad.length ? '，E-mail 格式有誤 ' + bad.length + ' 位' : '') + '。');
+    return;
+  }
+  const lines = pending.map(x => x.reg.session + '｜' + (x.reg.identity || '－') + '｜' + x.reg.name + '｜' + x.reg.email);
+  const ok = ui.alert('確認寄送（名單：' + staffSs.getName() + '）',
+    '將寄出 ' + pending.length + ' 封「報名成功／行前資訊」通知信，附行程 PDF：\n\n' + lines.join('\n') +
+    (list.length - pending.length ? '\n\n已寄過而略過：' + list.filter(x => x.sent).length + ' 位' : '') +
+    (bad.length ? '\nE-mail 格式有誤而略過：' + bad.map(x => x.reg.name).join('、') : '') +
+    '\n\n這些資料不會寫入報名試算表，也不計入名額。確定寄送？', ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(60000)) { ui.alert('另一個寄信作業正在執行，請稍後再試。'); return; }
+  let sent = 0;
+  const failed = [];
+  try {
+    const pdfBlob = getItineraryPdfBlob_();   // 附件只下載一次
+    pending.forEach(x => {
+      try {
+        sendNotificationEmail_(x.reg, null, pdfBlob);
+        x.sheet.getRange(x.row, x.sentCol).setValue(new Date()).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+        sent++;
+      } catch (err) {
+        failed.push(x.reg.name + '（' + err + '）');
+        Logger.log('長官及工作人員寄送失敗 ' + x.reg.name + ' <' + x.reg.email + '>：' + err);
+      }
+    });
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
+  ui.alert('寄送完成：成功 ' + sent + ' 封' + (failed.length ? '，失敗 ' + failed.length + ' 封：\n' + failed.join('\n') : '') +
+    '\n寄送時間已記錄在名單試算表的「通知寄送時間」欄。');
+}
+
+/** 選單：用名單中第一位尚未寄送者的資料，寄一封預覽到自己的信箱 */
+function previewStaffNotificationDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const staffSs = openStaffSpreadsheet_(ui, false);
+  if (!staffSs) return;
+  const list = readStaffList_(staffSs);
+  const target = list.filter(x => !x.sent)[0] || list[0];
+  if (!target) { ui.alert('名單試算表沒有資料。'); return; }
+  const me = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail();
+  sendNotificationEmail_(target.reg, me);
+  ui.alert('預覽信已寄到 ' + me + '（內容為：' + target.reg.name + '／' + target.reg.session + '）。\n此動作不會標記寄送時間。');
 }
 
 /* ------------------------------------------------------------------ */
