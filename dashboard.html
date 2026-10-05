@@ -101,8 +101,6 @@ main{padding:1.8rem 0 3rem}
 .track.full i{border-radius:999px}
 .row .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-soft)}
 .row .num b{color:var(--ink)}
-.row.closed .name,.row.closed .num{color:var(--ink-soft);opacity:.7}
-.cell.closed{color:var(--ink-soft);opacity:.7}
 .meals{display:flex;gap:.8rem;margin-top:.8rem;padding-top:.7rem;border-top:1px dashed var(--line);font-size:.82rem;color:var(--ink-soft)}
 .meals b{color:var(--ink)}
 @media (max-width:900px){.sessions{grid-template-columns:1fr}}
@@ -255,7 +253,7 @@ const IDENTITIES = [
   { key: "醫事職類PGY", limit: 9,  color: "var(--s-mpgy)",    hex: "#2f6db5" },
   { key: "臨床教師",    limit: 8,  color: "var(--s-teacher)", hex: "#c9880c" }
 ];
-// 各梯次限額（2026-09-30：第二、第三梯次臨床教師 9 人；2026-10-05：第一梯次改為 UGY 8、PGY 4、醫事職類PGY 0、臨床教師 23）。限額 0＝該梯次不開放此身分。載入後以後端或公開統計回傳的值為準
+// 各梯次限額（2026-09-30：第二、第三梯次臨床教師 9 人；2026-10-05：第一梯次改為 UGY 8、PGY 4、醫事職類PGY 0、臨床教師 23）。限額 0 一律顯示為「額滿」。載入後以後端或公開統計回傳的值為準
 const SESSION_LIMITS = {
   "第一梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 4, "醫事職類PGY": 0, "臨床教師": 23 },
   "第二梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 },
@@ -580,9 +578,7 @@ function render(){
 function renderKpis(){
   const totalLimit = totalLimitAll();
   const total = SESSIONS.reduce((n, s) => n + sessionTotal(s.key), 0);
-  // 限額 0（不開放）的組合不列入「已額滿」與總組數
-  const openCells = SESSIONS.flatMap(s => IDENTITIES.filter(i => limitOf(i.key, s.key) > 0).map(i => ({ s, i })));
-  const fullCells = openCells.filter(({ s, i }) => used(s.key, i.key) >= limitOf(i.key, s.key));
+  const fullCells = SESSIONS.flatMap(s => IDENTITIES.filter(i => used(s.key, i.key) >= limitOf(i.key, s.key)));
   const pct = totalLimit ? Math.round(total / totalLimit * 100) : 0;
   const busiest = [...SESSIONS].sort((a, b) => sessionTotal(b.key) - sessionTotal(a.key))[0];
   let veg = null, vegPct = null, meat = 0;
@@ -594,7 +590,7 @@ function renderKpis(){
   $("#kpis").innerHTML = `
     <div class="kpi" style="--k:var(--brick)"><div class="label">總報名人數</div><div class="value">${total}<small>／ ${totalLimit} 名</small></div><div class="foot">整體額滿率 ${pct}%</div></div>
     <div class="kpi" style="--k:var(--s-mpgy)"><div class="label">剩餘名額</div><div class="value">${Math.max(0, totalLimit - total)}<small>名</small></div><div class="foot">${SESSIONS.map(s => `${s.key.replace("梯次","")} ${Math.max(0, sessionLimit(s.key) - sessionTotal(s.key))}`).join("・")}</div></div>
-    <div class="kpi" style="--k:var(--s-teacher)"><div class="label">已額滿的梯次身分</div><div class="value">${fullCells.length}<small>／ ${openCells.length} 組</small></div><div class="foot">報名最踴躍：${busiest.key}（${sessionTotal(busiest.key)} 人）</div></div>
+    <div class="kpi" style="--k:var(--s-teacher)"><div class="label">已額滿的梯次身分</div><div class="value">${fullCells.length}<small>／ ${SESSIONS.length * IDENTITIES.length} 組</small></div><div class="foot">報名最踴躍：${busiest.key}（${sessionTotal(busiest.key)} 人）</div></div>
     <div class="kpi" style="--k:var(--s-ugy)"><div class="label">素食人數</div><div class="value">${veg === null ? "－" : veg}<small>${veg === null ? "" : "人"}</small></div><div class="foot">${veg === null ? "名單資料載入後顯示" : `占 ${vegPct}%・葷食 ${meat} 人`}</div></div>`;
 }
 
@@ -615,10 +611,10 @@ function renderSessions(){
         <div class="session-total"><b>${total}</b><span>／ ${sessionLimit(s.key)} 人</span>${badge}</div>
         <div class="rows">${IDENTITIES.map(i => {
           const u = used(s.key, i.key), lim = limitOf(i.key, s.key), pct = lim ? Math.min(100, Math.round(u / lim * 100)) : 0;
-          if (lim === 0 && u === 0) return `<div class="row closed" data-tip="${esc(s.key)}｜${esc(i.key)}：本梯次不開放">
+          if (lim === 0) return `<div class="row" data-tip="${esc(s.key)}｜${esc(i.key)}：額滿">
             <span class="name"><span class="swatch" style="--c:${i.color}"></span><span>${i.key.split("/").map(p => `<span class="nw">${p}</span>`).join("/<wbr>")}</span></span>
-            <span class="track"></span>
-            <span class="num">不開放</span>
+            <span class="track full" style="--c:${i.color}"><i style="width:100%"></i></span>
+            <span class="num"><b>額滿</b></span>
           </div>`;
           return `<div class="row" data-tip="${esc(s.key)}｜${esc(i.key)}：已報名 ${u} 人，剩餘 ${Math.max(0, lim - u)} 名（限額 ${lim}）">
             <span class="name"><span class="swatch" style="--c:${i.color}"></span><span>${i.key.split("/").map(p => `<span class="nw">${p}</span>`).join("/<wbr>")}</span></span>
@@ -672,7 +668,7 @@ function renderMatrix(){
       const lim = limitOf(i.key, s.key);
       const u = used(s.key, i.key); sum += u; limSum += lim;
       const pct = lim ? Math.min(100, Math.round(u / lim * 100)) : 0;
-      if (lim === 0 && u === 0) return `<td class="num"><span class="cell closed">不開放</span></td>`;
+      if (lim === 0) return `<td class="num"><span class="cell full" style="--c:${i.color}"><span class="mini"><i style="width:100%"></i></span>額滿</span></td>`;
       return `<td class="num"><span class="cell ${u >= lim ? "full" : ""}" style="--c:${i.color}"><span class="mini"><i style="width:${pct}%"></i></span>${u}／${lim}</span></td>`;
     }).join("");
     return `<tr><td><span class="chip"><span class="swatch" style="--c:${i.color}"></span>${i.key}</span></td>${cells}<td class="num">${sum}／${limSum}</td></tr>`;

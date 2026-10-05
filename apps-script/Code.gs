@@ -43,7 +43,7 @@ const LIMITS = {
   '臨床教師': 8
 };
 // 各梯次限額（2026-09-30 調整：第二、第三梯次臨床教師改為 9 人；
-// 2026-10-05 調整：第一梯次改為 UGY 8、西醫PGY 4、醫事職類PGY 0、臨床教師 23）。限額 0＝該梯次不開放此身分
+// 2026-10-05 調整：第一梯次改為 UGY 8、西醫PGY 4、醫事職類PGY 0、臨床教師 23）。限額 0 在網頁上顯示為「額滿」
 // index.html 與 dashboard.html 也有同一份，並以後端回傳的 sessionLimits 為準
 const SESSION_LIMITS = {
   '第一梯次': { '西醫UGY/醫事職類UGY': 8, '西醫PGY': 4, '醫事職類PGY': 0, '臨床教師': 23 },
@@ -421,9 +421,6 @@ function doPost(e) {
 
     // 名額檢查
     if (usedCount_(counts, session, identity) >= limitOf_(session, identity)) {
-      if (limitOf_(session, identity) === 0) {
-        return json_({ ok: false, error: 'full', counts: counts, message: session + '不開放「' + identity + '」報名，請改選其他梯次。' });
-      }
       return json_({ ok: false, error: 'full', counts: counts, message: session + '的「' + identity + '」名額已額滿，請改選其他梯次或洽教學部詢問候補。' });
     }
 

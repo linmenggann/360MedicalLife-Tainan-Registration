@@ -1405,7 +1405,7 @@ const IDENTITIES = [
   { key: "醫事職類PGY", limit: 9,  color: "#3f6f86" },
   { key: "臨床教師",    limit: 8,  color: "#a7781f" }
 ];
-// 各梯次限額（2026-09-30：第二、第三梯次臨床教師 9 人；2026-10-05：第一梯次改為 UGY 8、PGY 4、醫事職類PGY 0、臨床教師 23）。限額 0＝該梯次不開放此身分。載入名額後以後端回傳的 sessionLimits 為準
+// 各梯次限額（2026-09-30：第二、第三梯次臨床教師 9 人；2026-10-05：第一梯次改為 UGY 8、PGY 4、醫事職類PGY 0、臨床教師 23）。限額 0 一律顯示為「額滿」。載入名額後以後端回傳的 sessionLimits 為準
 let SESSION_LIMITS = {
   "第一梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 4, "醫事職類PGY": 0, "臨床教師": 23 },
   "第二梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 },
@@ -1668,13 +1668,13 @@ function renderQuota(){
     const lim = limitOf(i.key, quotaView);
     const usedN = lim - left;
     const pct = known && lim ? Math.round(usedN / lim * 100) : 0;
-    const closed = lim === 0;          // 限額 0＝本梯次不開放此身分
+    const closed = lim === 0;          // 限額 0：不必等名額載入，直接顯示額滿
     return `
       <div class="quota-card ${closed || (known && left === 0) ? "is-full" : ""} ${known || closed ? "" : "is-loading"}" style="--q-color:${i.color}">
         <div class="q-name">${i.key.split("/").map(p => `<span class="nw">${p}</span>`).join("/<wbr>")}</div>
-        <div class="q-num"><b>${closed ? "–" : known ? left : "–"}</b><span>${closed ? "本梯次不開放" : known ? "名 尚可報名" : "名額載入中…"}</span></div>
+        <div class="q-num"><b>${closed ? 0 : known ? left : "–"}</b><span>${closed || known ? "名 尚可報名" : "名額載入中…"}</span></div>
         <div class="bar"><i style="width:${pct}%"></i></div>
-        <div class="q-full"><span>${closed ? "不開放" : "額滿"}</span></div>
+        <div class="q-full"><span>額滿</span></div>
       </div>`;
   }).join("");
 
@@ -1693,7 +1693,7 @@ function renderQuota(){
         const left = remaining(i.key, session);
         const closed = limitOf(i.key, session) === 0;
         const full = closed || (known && left === 0);
-        const label = closed ? `${i.key}（本梯次不開放）` : !known ? `${i.key}（名額載入中）` : full ? `${i.key}（已額滿）` : `${i.key}（剩餘 ${left} 名）`;
+        const label = closed ? `${i.key}（已額滿）` : !known ? `${i.key}（名額載入中）` : full ? `${i.key}（已額滿）` : `${i.key}（剩餘 ${left} 名）`;
         return `<option value="${i.key}" ${full ? "disabled" : ""} ${current === i.key && !full ? "selected" : ""}>${label}</option>`;
       }).join("");
   }
