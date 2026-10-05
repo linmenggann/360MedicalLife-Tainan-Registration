@@ -37,7 +37,7 @@ const SESSION_DATES = {
 };
 // 身分清單與預設限額（三梯次共用名額時使用這組）
 const LIMITS = {
-  '西醫UGY': 8,
+  '西醫UGY/醫事職類UGY': 8,
   '西醫PGY': 10,
   '醫事職類PGY': 9,
   '臨床教師': 8
@@ -45,10 +45,18 @@ const LIMITS = {
 // 各梯次限額（2026-09-30 調整：第二、第三梯次臨床教師改為 9 人）
 // index.html 與 dashboard.html 也有同一份，並以後端回傳的 sessionLimits 為準
 const SESSION_LIMITS = {
-  '第一梯次': { '西醫UGY': 8, '西醫PGY': 10, '醫事職類PGY': 9, '臨床教師': 8 },
-  '第二梯次': { '西醫UGY': 8, '西醫PGY': 10, '醫事職類PGY': 9, '臨床教師': 9 },
-  '第三梯次': { '西醫UGY': 8, '西醫PGY': 10, '醫事職類PGY': 9, '臨床教師': 9 }
+  '第一梯次': { '西醫UGY/醫事職類UGY': 8, '西醫PGY': 10, '醫事職類PGY': 9, '臨床教師': 8 },
+  '第二梯次': { '西醫UGY/醫事職類UGY': 8, '西醫PGY': 10, '醫事職類PGY': 9, '臨床教師': 9 },
+  '第三梯次': { '西醫UGY/醫事職類UGY': 8, '西醫PGY': 10, '醫事職類PGY': 9, '臨床教師': 9 }
 };
+// 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
+// 試算表既有資料、舊版網頁送來的值仍可能是舊名稱：讀取、統計與寫入前一律換成新名稱。
+// 既有資料可用選單「身分名稱更新為新名稱」一次改寫。
+const IDENTITY_ALIASES = { '西醫UGY': '西醫UGY/醫事職類UGY' };
+function canonIdentity_(v) {
+  const k = String(v == null ? '' : v).trim();
+  return IDENTITY_ALIASES[k] || k;
+}
 /** 某梯次某身分的限額；三梯次共用名額時用 LIMITS */
 function limitOf_(session, identity) {
   if (QUOTA_SCOPE !== 'total' && SESSION_LIMITS[session] && SESSION_LIMITS[session][identity] !== undefined) {
@@ -167,6 +175,7 @@ function onOpen() {
     .createMenu('報名系統')
     .addItem('初始化分頁與表頭', 'setupSheets')
     .addItem('顯示各梯次名額統計', 'showCounts')
+    .addItem('身分名稱更新為新名稱（西醫UGY → 西醫UGY/醫事職類UGY）', 'renameLegacyIdentities')
     .addSeparator()
     .addItem('建立公開統計試算表（GViz / CSV 備援）', 'setupStatsPublishing')
     .addItem('立即更新公開統計', 'publishStats')
@@ -184,6 +193,39 @@ function onOpen() {
     .addItem('清除人事號等欄位的前置撇號', 'fixApostrophes')
     .addItem('診斷文字欄內容', 'diagnoseTextColumns')
     .addToUi();
+}
+
+/**
+ * 把總表與三個梯次分頁「身分」欄的舊名稱改成新名稱（IDENTITY_ALIASES）。
+ * 只改「身分」欄、只改需要改的儲存格；可重複執行。改完後更新快取與公開統計。
+ */
+function renameLegacyIdentities() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  const changed = [];
+  try {
+    [MASTER_SHEET].concat(SESSIONS).forEach(name => {
+      const sheet = ss_().getSheetByName(name);
+      if (!sheet || sheet.getLastRow() < 2) return;
+      const range = sheet.getRange(2, COL['身分'], sheet.getLastRow() - 1, 1);
+      const vals = range.getValues();
+      let n = 0;
+      const next = vals.map(r => {
+        const v = canonIdentity_(r[0]);
+        if (v !== String(r[0]).trim() && String(r[0]).trim() !== '') { n++; return [v]; }
+        return [r[0]];
+      });
+      if (n) { range.setValues(next); changed.push(name + ' ' + n + ' 筆'); }
+    });
+    SpreadsheetApp.flush();
+    refreshCaches_();
+  } finally {
+    lock.releaseLock();
+  }
+  try { publishStats(); } catch (e) { /* 尚未建立公開統計時略過 */ }
+  SpreadsheetApp.getUi().alert(changed.length
+    ? '已將身分名稱更新為新名稱：\n\n' + changed.join('\n')
+    : '沒有需要更新的資料（身分欄已全部是新名稱）。');
 }
 
 function showCounts() {
@@ -228,7 +270,7 @@ function readMaster_(master) {
 function countsFromRows_(rows) {
   const counts = emptyCounts_();
   rows.forEach(r => {
-    const s = String(r[COL['梯次'] - 1]).trim(), k = String(r[COL['身分'] - 1]).trim();
+    const s = String(r[COL['梯次'] - 1]).trim(), k = canonIdentity_(r[COL['身分'] - 1]);
     if (counts[s] && counts[s][k] !== undefined) counts[s][k]++;
   });
   return counts;
@@ -245,7 +287,7 @@ function registrationsFromRows_(rows) {
     return {
       ts: (t instanceof Date) ? t.toISOString() : String(t),
       session: String(r[COL['梯次'] - 1]).trim(),
-      identity: String(r[COL['身分'] - 1]).trim(),
+      identity: canonIdentity_(r[COL['身分'] - 1]),
       unit: String(r[COL['單位'] - 1]).trim(),
       name: String(r[COL['姓名'] - 1]).trim(),
       empId: normalizeId(r[COL['人事號'] - 1]),
@@ -346,7 +388,7 @@ function doPost(e) {
       }
     }
     const session = String(d.session).trim();
-    const identity = String(d.identity).trim();
+    const identity = canonIdentity_(d.identity);
     const empId = normalizeId(d.empId);
     const nationalId = normalizeId(d.nationalId);
 
@@ -641,7 +683,7 @@ function testTextColumns() {
 function rowToReg_(row) {
   return {
     session: String(row[COL['梯次'] - 1]).trim(),
-    identity: String(row[COL['身分'] - 1]).trim(),
+    identity: canonIdentity_(row[COL['身分'] - 1]),
     unit: String(row[COL['單位'] - 1]).trim(),
     name: String(row[COL['姓名'] - 1]).trim(),
     empId: normalizeId(row[COL['人事號'] - 1]),
@@ -929,7 +971,7 @@ function adminAddSessions(empId, targetSessions) {
     const baseRow = mine[0];
     name = String(baseRow[COL['姓名'] - 1]).trim();
     shownId = normalizeId(baseRow[COL['人事號'] - 1]);
-    const identity = String(baseRow[COL['身分'] - 1]).trim();
+    const identity = canonIdentity_(baseRow[COL['身分'] - 1]);
     const original = mine.map(r => String(r[COL['梯次'] - 1]).trim());
     const has = original.slice();
     const counts = countsFromRows_(all);

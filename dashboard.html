@@ -92,8 +92,9 @@ main{padding:1.8rem 0 3rem}
 .badge.ok{color:var(--ok)}.badge.warn{color:var(--warn)}.badge.full{color:var(--full)}
 .badge svg{width:.9em;height:.9em}
 .rows{display:grid;gap:.55rem}
-.row{display:grid;grid-template-columns:96px 1fr 62px;align-items:center;gap:.6rem;font-size:.85rem}
-.row .name{display:flex;align-items:center;gap:.4rem;color:var(--ink);white-space:nowrap}
+.row{display:grid;grid-template-columns:108px 1fr 62px;align-items:center;gap:.6rem;font-size:.85rem}
+.row .name{display:flex;align-items:center;gap:.4rem;color:var(--ink);line-height:1.25}
+.nw{white-space:nowrap}
 .swatch{width:10px;height:10px;border-radius:3px;flex:none;background:var(--c)}
 .track{height:10px;background:var(--rice);border:1px solid var(--line);border-radius:999px;overflow:hidden;position:relative}
 .track i{position:absolute;left:0;top:0;bottom:0;background:var(--c);border-radius:0 4px 4px 0;transition:width .6s cubic-bezier(.2,.8,.2,1)}
@@ -247,20 +248,42 @@ const SESSIONS = [
   { key: "第三梯次", date: "115/11/21（六）–11/22（日）", short: "11/21–11/22" }
 ];
 const IDENTITIES = [
-  { key: "西醫UGY",     limit: 8,  color: "var(--s-ugy)",     hex: "#3a8a5c" },
+  { key: "西醫UGY/醫事職類UGY", limit: 8,  color: "var(--s-ugy)",     hex: "#3a8a5c" },
   { key: "西醫PGY",     limit: 10, color: "var(--s-pgy)",     hex: "#d24a2e" },
   { key: "醫事職類PGY", limit: 9,  color: "var(--s-mpgy)",    hex: "#2f6db5" },
   { key: "臨床教師",    limit: 8,  color: "var(--s-teacher)", hex: "#c9880c" }
 ];
 // 各梯次限額（2026-09-30：第二、第三梯次臨床教師 9 人）。載入後以後端或公開統計回傳的值為準
 const SESSION_LIMITS = {
-  "第一梯次": { "西醫UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 8 },
-  "第二梯次": { "西醫UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 },
-  "第三梯次": { "西醫UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 }
+  "第一梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 8 },
+  "第二梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 },
+  "第三梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 }
 };
+// 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
+// 既有報名資料、公開統計、本機快取與尚未重新部署的後端仍可能使用舊名稱，讀取時一律換成新名稱。
+const IDENTITY_ALIASES = { "西醫UGY": "西醫UGY/醫事職類UGY" };
+function canonIdentity(k){
+  k = String(k ?? "").trim();
+  return IDENTITY_ALIASES[k] || k;
+}
+/** 以身分為鍵的物件（人數或限額）換成新名稱；sum＝同一身分新舊名稱並存時相加（人數用） */
+function canonKeys(obj, sum){
+  const out = {};
+  Object.keys(obj || {}).forEach(k => {
+    const id = canonIdentity(k), v = obj[k];
+    out[id] = sum && out[id] != null ? Number(out[id]) + Number(v || 0) : v;
+  });
+  return out;
+}
+function canonCounts(c){
+  const out = emptyCounts();
+  Object.keys(c || {}).forEach(s => { out[s] = Object.assign(out[s] || {}, canonKeys(c[s], true)); });
+  return out;
+}
+const canonRegistrations = list => Array.isArray(list) ? list.map(r => Object.assign({}, r, { identity: canonIdentity(r.identity) })) : list;
 function mergeSessionLimits(src){
   if (!src) return;
-  Object.keys(src).forEach(s => { SESSION_LIMITS[s] = Object.assign({}, SESSION_LIMITS[s] || {}, src[s]); });
+  Object.keys(src).forEach(s => { SESSION_LIMITS[s] = Object.assign({}, SESSION_LIMITS[s] || {}, canonKeys(src[s])); });
 }
 
 const LS_CACHE = "tainan360_dashboard_cache";
@@ -413,8 +436,9 @@ function statsFromRows(rows){
   let quotaScope = "session", updated = "";
   rows.slice(1).forEach(([type, k1, k2, v, ts]) => {
     const n = Number(v) || 0;
-    if (type === "名額" && counts[k1] && counts[k1][k2] !== undefined) counts[k1][k2] = n;
-    else if (type === "限額") limits[k1] = n;
+    if (type === "名額" || type === "梯次限額") k2 = canonIdentity(k2);
+    if (type === "名額" && counts[k1] && counts[k1][k2] !== undefined) counts[k1][k2] += n;
+    else if (type === "限額") limits[canonIdentity(k1)] = n;
     else if (type === "梯次限額" && k1 && k2 && v !== "") mergeSessionLimits({ [k1]: { [k2]: n } });
     else if (type === "餐食" && agg.meals[k1] && agg.meals[k1][k2] !== undefined) agg.meals[k1][k2] = n;
     else if (type === "每日") agg.daily[k1] = n;
@@ -432,7 +456,7 @@ function loadCache(){
   try {
     const c = JSON.parse(localStorage.getItem(LS_CACHE) || "null");
     if (!c || !c.counts) return false;
-    Object.assign(state, { counts: c.counts, limits: c.limits, quotaScope: c.quotaScope || "session", registrations: c.registrations || null, agg: c.agg || null, ts: c.ts ? new Date(c.ts) : null, rosterTs: c.rosterTs ? new Date(c.rosterTs) : (c.ts ? new Date(c.ts) : null), source: "cache", unlocked: Array.isArray(c.registrations) });
+    Object.assign(state, { counts: canonCounts(c.counts), limits: c.limits ? canonKeys(c.limits) : null, quotaScope: c.quotaScope || "session", registrations: canonRegistrations(c.registrations) || null, agg: c.agg || null, ts: c.ts ? new Date(c.ts) : null, rosterTs: c.rosterTs ? new Date(c.rosterTs) : (c.ts ? new Date(c.ts) : null), source: "cache", unlocked: Array.isArray(c.registrations) });
     return true;
   } catch(e){ return false; }
 }
@@ -471,9 +495,9 @@ async function load(){
     let data = await apiDashboard();
     if (data && data.ok && Array.isArray(data.registrations)){
       state.unlocked = true;
-      state.registrations = data.registrations;
+      state.registrations = canonRegistrations(data.registrations);
       state.rosterTs = new Date();
-      state.agg = aggFromRegistrations(data.registrations);
+      state.agg = aggFromRegistrations(state.registrations);
       notice(null);
     } else if (data && data.error === "unauthorized"){
       state.unlocked = false;
@@ -486,8 +510,8 @@ async function load(){
       // 回應沒有名單（多半是 Google 端的暫時狀況）：當作這次沒拿到，保留已載入的名單，改用公開統計並稍後重試，不顯示提示
       throw new Error("dashboard response without registrations");
     }
-    state.counts = Object.assign(emptyCounts(), data.counts || {});
-    state.limits = data.limits || null;
+    state.counts = canonCounts(data.counts);
+    state.limits = data.limits ? canonKeys(data.limits) : null;
     mergeSessionLimits(data.sessionLimits);
     state.quotaScope = data.quotaScope || "session";
     state.ts = new Date();
@@ -588,7 +612,7 @@ function renderSessions(){
         <div class="rows">${IDENTITIES.map(i => {
           const u = used(s.key, i.key), lim = limitOf(i.key, s.key), pct = Math.min(100, Math.round(u / lim * 100));
           return `<div class="row" data-tip="${esc(s.key)}｜${esc(i.key)}：已報名 ${u} 人，剩餘 ${Math.max(0, lim - u)} 名（限額 ${lim}）">
-            <span class="name"><span class="swatch" style="--c:${i.color}"></span>${i.key}</span>
+            <span class="name"><span class="swatch" style="--c:${i.color}"></span><span>${i.key.split("/").map(p => `<span class="nw">${p}</span>`).join("/<wbr>")}</span></span>
             <span class="track ${u >= lim ? "full" : ""}" style="--c:${i.color}"><i style="width:${pct}%"></i></span>
             <span class="num"><b>${u}</b>／${lim}${u >= lim ? " 滿" : ""}</span>
           </div>`;

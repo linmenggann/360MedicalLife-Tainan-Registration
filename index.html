@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>360°醫學人生｜走進臺南，走進生活｜活動報名</title>
-<meta name="description" content="奇美醫院教學部「360°醫學人生｜走進臺南，走進生活」二日走讀活動報名。對象：西醫UGY、西醫PGY、醫事職類PGY及臨床教師。">
+<meta name="description" content="奇美醫院教學部「360°醫學人生｜走進臺南，走進生活」二日走讀活動報名。對象：西醫UGY/醫事職類UGY、西醫PGY、醫事職類PGY及臨床教師。">
 <meta property="og:title" content="360°醫學人生｜走進臺南，走進生活">
 <meta property="og:description" content="走讀府城街巷、市場、廟宇與聚落，從飲食、信仰、文化與土地認識民眾的生活樣貌。">
 <meta property="og:image" content="assets/poster.jpg?v=4">
@@ -162,7 +162,7 @@ h1,h2,h3,h4{font-family:var(--serif);margin:0;line-height:1.25}
 .chip-3{background:var(--water-soft)}
 .chip-days{background:var(--gold-soft);justify-content:center}
 .audience{font-size:.98rem;color:var(--ink);margin-bottom:1.4rem}
-.audience b{color:var(--brick-deep);font-family:var(--serif)}
+.audience b{color:var(--brick-deep);font-family:var(--serif);white-space:nowrap}
 .hero-cta{display:flex;flex-wrap:wrap;gap:.7rem}
 .poster-frame{
   position:relative;
@@ -429,13 +429,14 @@ section.block{padding:4.5rem 0}
 .quota-card{
   border-radius:var(--radius);padding:1.4rem 1.3rem 1.2rem;
   background:var(--paper);border:1px solid var(--line);box-shadow:var(--shadow);
-  position:relative;overflow:hidden;
+  position:relative;overflow:hidden;display:flex;flex-direction:column;
 }
 .quota-card::after{
   content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;
   background:var(--q-color,var(--brick));opacity:.12;
 }
-.quota-card .q-name{font-family:var(--serif);font-weight:700;font-size:1.15rem;color:#1f3a3d}
+.quota-card .q-name{font-family:var(--serif);font-weight:700;font-size:1.15rem;color:#1f3a3d;flex:1 0 auto}
+.nw{white-space:nowrap}
 .quota-card .q-num{display:flex;align-items:baseline;gap:.35rem;margin:.5rem 0 .3rem}
 .quota-card .q-num b{font-family:var(--serif);font-size:2.4rem;color:var(--q-color,var(--brick));line-height:1}
 .quota-card .q-num span{color:var(--ink-soft);font-size:.9rem}
@@ -605,7 +606,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
         <div class="chip chip-3"><small>第三梯次</small><span>11/21（六）–11/22（日）</span></div>
         <div class="chip chip-days"><span>民國 115 年｜每梯次 2 日</span></div>
       </div>
-      <p class="audience">參加對象｜<b>西醫UGY</b>、<b>西醫PGY</b>、<b>醫事職類PGY</b> 及 <b>臨床教師</b></p>
+      <p class="audience">參加對象｜<b>西醫UGY/醫事職類UGY</b>、<b>西醫PGY</b>、<b>醫事職類PGY</b> 及 <b>臨床教師</b></p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#register">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
@@ -1048,7 +1049,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></div>
         <div>
           <h4>參加對象</h4>
-          <p>西醫UGY・西醫PGY</p>
+          <p>西醫UGY/醫事職類UGY・西醫PGY</p>
           <p>醫事職類PGY・臨床教師</p>
           <p class="muted">額滿為止，名額即時顯示於報名表。</p>
         </div>
@@ -1399,17 +1400,27 @@ const SESSIONS = [
   { key: "第三梯次", date: "115/11/21（六）–11/22（日）", short: "11/21–11/22" }
 ];
 const IDENTITIES = [
-  { key: "西醫UGY",     limit: 8,  color: "#5a7a3c" },
+  { key: "西醫UGY/醫事職類UGY", limit: 8,  color: "#5a7a3c" },
   { key: "西醫PGY",     limit: 10, color: "#c25d3b" },
   { key: "醫事職類PGY", limit: 9,  color: "#3f6f86" },
   { key: "臨床教師",    limit: 8,  color: "#a7781f" }
 ];
 // 各梯次限額（2026-09-30：第二、第三梯次臨床教師 9 人）。載入名額後以後端回傳的 sessionLimits 為準
 let SESSION_LIMITS = {
-  "第一梯次": { "西醫UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 8 },
-  "第二梯次": { "西醫UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 },
-  "第三梯次": { "西醫UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 }
+  "第一梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 8 },
+  "第二梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 },
+  "第三梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 10, "醫事職類PGY": 9, "臨床教師": 9 }
 };
+// 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
+// 既有報名資料、公開統計與尚未重新部署的後端仍可能使用舊名稱，讀取時一律換成新名稱。
+const IDENTITY_ALIASES = { "西醫UGY": "西醫UGY/醫事職類UGY" };
+function canonIdentity(k){
+  k = String(k == null ? "" : k).trim();
+  return IDENTITY_ALIASES[k] || k;
+}
+function legacyIdentity(k){
+  return Object.keys(IDENTITY_ALIASES).find(old => IDENTITY_ALIASES[old] === k) || "";
+}
 function limitOf(identity, session){
   const s = SESSION_LIMITS[session];
   if (CONFIG.QUOTA_SCOPE !== "total" && s && s[identity] != null) return Number(s[identity]);
@@ -1418,7 +1429,11 @@ function limitOf(identity, session){
 }
 function mergeSessionLimits(src){
   if (!src) return;
-  Object.keys(src).forEach(s => { SESSION_LIMITS[s] = Object.assign({}, SESSION_LIMITS[s] || {}, src[s]); });
+  Object.keys(src).forEach(s => {
+    const lim = {};
+    Object.keys(src[s] || {}).forEach(k => { lim[canonIdentity(k)] = src[s][k]; });
+    SESSION_LIMITS[s] = Object.assign({}, SESSION_LIMITS[s] || {}, lim);
+  });
 }
 const LS_KEY = "tainan360_demo_registrations";
 
@@ -1467,7 +1482,10 @@ function applyCounts(data){
   if (!data) return next;
   SESSIONS.forEach(s => {
     const row = data[s.key] || {};
-    IDENTITIES.forEach(i => { next[s.key][i.key] = Number(row[i.key] || 0); });
+    Object.keys(row).forEach(k => {
+      const id = canonIdentity(k);
+      if (next[s.key][id] !== undefined) next[s.key][id] += Number(row[k] || 0);
+    });
   });
   return next;
 }
@@ -1476,7 +1494,7 @@ function demoCounts(){
   let list = [];
   try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch(e){}
   const c = emptyCounts();
-  list.forEach(r => { if (c[r.session] && c[r.session][r.identity] !== undefined) c[r.session][r.identity]++; });
+  list.forEach(r => { const id = canonIdentity(r.identity); if (c[r.session] && c[r.session][id] !== undefined) c[r.session][id]++; });
   return c;
 }
 
@@ -1528,7 +1546,8 @@ function countsFromStatsRows(rows){
   if (!rows.length || String(rows[0][0]).trim() !== "類型") throw new Error("統計資料格式不符");
   const c = emptyCounts(), limits = {}; let updated = "";
   rows.slice(1).forEach(([type, k1, k2, v, ts]) => {
-    if (type === "名額" && c[k1] && c[k1][k2] !== undefined) c[k1][k2] = Number(v) || 0;
+    k2 = canonIdentity(k2);
+    if (type === "名額" && c[k1] && c[k1][k2] !== undefined) c[k1][k2] += Number(v) || 0;
     if (type === "梯次限額" && k1 && k2 && v !== "") { (limits[k1] = limits[k1] || {})[k2] = Number(v); }
     if (ts) updated = ts;
   });
@@ -1651,7 +1670,7 @@ function renderQuota(){
     const pct = known && lim ? Math.round(usedN / lim * 100) : 0;
     return `
       <div class="quota-card ${known && left === 0 ? "is-full" : ""} ${known ? "" : "is-loading"}" style="--q-color:${i.color}">
-        <div class="q-name">${i.key}</div>
+        <div class="q-name">${i.key.split("/").map(p => `<span class="nw">${p}</span>`).join("/<wbr>")}</div>
         <div class="q-num"><b>${known ? left : "–"}</b><span>${known ? "名 尚可報名" : "名額載入中…"}</span></div>
         <div class="bar"><i style="width:${pct}%"></i></div>
         <div class="q-full"><span>額滿</span></div>
@@ -1793,12 +1812,21 @@ async function submitRegistration(payload){
     return { ok: true, registered: true, session: payload.session };
   }
   // Apps Script：使用 text/plain 避免 CORS preflight
-  const res = await fetch(CONFIG.API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload)
-  });
-  return await res.json();
+  const post = async body => {
+    const res = await fetch(CONFIG.API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body)
+    });
+    return await res.json();
+  };
+  const result = await post(payload);
+  // 過渡期：後端尚未部署新版、還不認得新身分名稱時，改用舊名稱再送一次（新版後端兩種名稱都接受）
+  const legacy = legacyIdentity(payload.identity);
+  if (legacy && result && result.error === "invalid" && result.message === "身分不正確"){
+    return await post(Object.assign({}, payload, { identity: legacy }));
+  }
+  return result;
 }
 
 document.getElementById("regForm").addEventListener("submit", async e => {
