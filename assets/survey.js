@@ -1,7 +1,8 @@
 /*
  * 活動滿意度調查 — survey-1.html／survey-2.html／survey-3.html 共用。
  * 各頁以 <body data-session="第一梯次"> 指定梯次；題目、版面與送出流程三梯次完全相同。
- * 後端：apps-script/Code.gs 的 surveyLookup_／surveyStatus_／submitSurvey_。
+ * 後端：apps-script/Code.gs 的 surveyLookup_／surveyStatus_／submitSurvey_，
+ * 照片上傳：surveyUploadUrl_（申請 Drive 可續傳上傳網址）／surveyUploadStatus_／surveyUploadChunk_（代傳備援）。
  */
 (function () {
 "use strict";
@@ -9,12 +10,14 @@
 const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
   LOOKUP_TIMEOUT_MS: 25000,
-  SUBMIT_TIMEOUT_MS: 300000,     // 原檔上傳，行動網路較慢時需要較久
+  SUBMIT_TIMEOUT_MS: 60000,      // 送出問卷（照片已上傳，只帶檔案 ID）
   STORY_MIN: 20,                 // 與 Code.gs 的 SURVEY_STORY_MIN 相同
   STORY_MAX: 1000,
-  // 照片不壓縮、原檔上傳。每張上限 15 MB（與 Code.gs 相同）：兩張合計 30 MB，Base64 後約 40 MB，
-  // 仍在 Apps Script 單次請求的大小上限內
-  MAX_FILE_BYTES: 15 * 1024 * 1024
+  // 照片：原檔、不限大小，直接以 Google Drive API 可續傳上傳（分塊續傳）
+  CHUNK_BYTES: 8 * 1024 * 1024,  // 分塊大小（Drive 規定為 256 KB 的倍數）
+  CHUNK_TIMEOUT_MS: 10 * 60 * 1000,
+  MAX_RETRIES: 8,                // 連續失敗幾次後暫停（約 2～3 分鐘）；再按送出會從中斷處續傳
+  DIRECT_FAILS_BEFORE_PROXY: 2   // 直接上傳連續失敗幾次（後端仍連得上）後，改由後端代傳分塊
 };
 
 const SESSIONS = {
@@ -124,23 +127,23 @@ async function getJson(params) {
   const res = await fetchWithTimeout(CONFIG.API_URL + "?" + q.toString(), {}, CONFIG.LOOKUP_TIMEOUT_MS);
   return res.json();
 }
-async function postJson(body) {
+async function postJson(body, ms) {
   // text/plain 避免 CORS preflight（Apps Script 不處理 OPTIONS）
   const res = await fetchWithTimeout(CONFIG.API_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(body)
-  }, CONFIG.SUBMIT_TIMEOUT_MS);
+  }, ms || CONFIG.SUBMIT_TIMEOUT_MS);
   return res.json();
 }
 
-/* ---------- 草稿（僅存在本機瀏覽器；照片不保存） ---------- */
+/* ---------- 草稿（僅存在本機瀏覽器）：作答、送出代碼與照片的上傳網址；照片檔案本身無法保存，需重新選取 ---------- */
 const DRAFT_KEY = "tainan360_survey_draft_" + SESSION;
 function saveDraft() {
   try {
     const answers = {};
     for (let i = 1; i <= QUESTION_COUNT; i++) { const c = $(`input[name=q${i}]:checked`); if (c) answers[i] = c.value; }
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ empId: $("#empId").value, answers, story: $("#story").value }));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ empId: $("#empId").value, answers, story: $("#story").value, sid: state.submissionId, uploads: state.uploads }));
   } catch (e) {}
 }
 function loadDraft() {
@@ -231,7 +234,8 @@ function render() {
             ${ICONS.camera}
             <strong>點這裡選擇活動照</strong>
             <span>手機可直接拍照或從相簿選取；電腦也可以把照片拖曳到這裡</span>
-            <span>JPG、PNG、HEIC，原檔上傳，每張 15 MB 以內</span>
+            <span>JPG、PNG、HEIC、RAW 皆可，原檔上傳、不限檔案大小</span>
+            <span>大檔案會分段上傳，網路中斷可從中斷處續傳</span>
           </label>
           <div class="preview"></div>
           <p class="err">請上傳一張活動照。</p>
@@ -275,7 +279,8 @@ function render() {
           <label class="drop" for="socialInput">
             ${ICONS.phone}
             <strong>點這裡上傳社群媒體截圖</strong>
-            <span>JPG、PNG、HEIC，原檔上傳，每張 15 MB 以內</span>
+            <span>JPG、PNG、HEIC、RAW 皆可，原檔上傳、不限檔案大小</span>
+            <span>大檔案會分段上傳，網路中斷可從中斷處續傳</span>
           </label>
           <div class="preview"></div>
         </div>
@@ -297,9 +302,10 @@ const state = {
   record: null,            // 查詢到的報名資料
   lookedUp: "",            // 已查詢的人事號（正規化後）
   lookupSeq: 0,
-  photo: null,             // { blob（原檔）, type, ext, preview, name, w, h }
+  photo: null,             // { blob（原檔 File）, name, preview, w, h }
   social: null,
   blocked: null,           // 此人事號已填寫過本梯次問卷時的編號（每人限填一次）
+  uploads: {},             // 上傳進度：{ photo|social: { url, mode, name, size, lastModified, fileId } }（續傳用）
   submissionId: newId(),   // 同一份問卷重送時沿用，後端據此避免重複寫入
   submitting: false,
   done: false
@@ -385,20 +391,28 @@ function loadImage(file) {
   });
 }
 const extOf = name => ((String(name).match(/\.([a-z0-9]+)$/i) || [])[1] || "").toLowerCase();
-const TYPE_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/heic": "heic", "image/heif": "heif" };
+const TYPE_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/heic": "heic", "image/heif": "heif", "image/tiff": "tif", "image/bmp": "bmp" };
+// 與 Code.gs 的 SURVEY_UPLOAD_EXTS 相同（含 RAW）
+const IMAGE_EXTS = ["jpg", "jpeg", "jpe", "png", "webp", "gif", "heic", "heif", "tif", "tiff", "bmp", "dng", "cr2", "cr3", "nef", "arw", "orf", "rw2", "raf"];
+function fileExt(file) {
+  let e = extOf(file.name);
+  if (e === "jpeg" || e === "jpe") e = "jpg";
+  if (IMAGE_EXTS.includes(e)) return e;
+  return TYPE_EXT[(file.type || "").toLowerCase()] || "jpg";
+}
 
-/** 不壓縮、原檔上傳：只檢查是否為圖片與大小上限，並產生預覽（電腦版 Chrome 無法顯示 HEIC，僅不顯示預覽，仍上傳原檔） */
+/** 不壓縮、原檔上傳、不限大小：只檢查是否為圖片，並產生預覽（HEIC、RAW 等瀏覽器無法顯示的格式不顯示預覽，仍上傳原檔） */
 async function prepareImage(file) {
-  const looksImage = /^image\//.test(file.type) || /^(jpe?g|png|webp|gif|heic|heif)$/.test(extOf(file.name));
-  if (!looksImage) throw new Error("請選擇圖片檔（JPG、PNG、HEIC 等）。");
+  const looksImage = /^image\//.test(file.type) || IMAGE_EXTS.includes(extOf(file.name));
+  if (!looksImage) throw new Error("請選擇圖片檔（JPG、PNG、HEIC、RAW 等）。");
   if (!file.size) throw new Error("這個檔案是空的，請改選其他照片。");
-  if (file.size > CONFIG.MAX_FILE_BYTES) throw new Error(`這張照片 ${fmtSize(file.size)}，超過每張 15 MB 的上限，請改選其他照片。`);
-  const type = (file.type || "").toLowerCase() || ("image/" + (extOf(file.name) === "jpg" ? "jpeg" : extOf(file.name) || "jpeg"));
-  const out = { blob: file, type, ext: TYPE_EXT[type] || extOf(file.name) || "jpg", name: file.name, preview: null, w: 0, h: 0 };
-  try {
-    const { img, url } = await loadImage(file);
-    Object.assign(out, { preview: url, w: img.naturalWidth, h: img.naturalHeight });
-  } catch (e) { /* 無法預覽 */ }
+  const out = { blob: file, name: file.name, preview: null, w: 0, h: 0 };
+  if (file.size <= 80 * 1024 * 1024) {             // 太大的檔案不解碼預覽，避免手機記憶體不足
+    try {
+      const { img, url } = await loadImage(file);
+      Object.assign(out, { preview: url, w: img.naturalWidth, h: img.naturalHeight });
+    } catch (e) { /* 無法預覽 */ }
+  }
   return out;
 }
 
@@ -411,6 +425,8 @@ function blobToBase64(blob) {
   });
 }
 
+const previewers = {};
+const refreshPreviews = () => Object.values(previewers).forEach(fn => fn());
 function setupUpload(key, boxSel, inputSel) {
   const box = $(boxSel), input = $(inputSel), drop = box.querySelector(".drop"), preview = box.querySelector(".preview");
 
@@ -438,12 +454,15 @@ function setupUpload(key, boxSel, inputSel) {
     const f = state[key];
     if (!f) { box.classList.remove("has-file"); preview.innerHTML = ""; return; }
     const dims = f.w ? `${f.w}×${f.h}・` : "";
+    const resume = sameFile(state.uploads[key], f.blob)
+      ? `<span class="ok">${state.uploads[key].fileId ? "✔ 這張照片已上傳完成" : "↻ 上次已開始上傳，送出時會從中斷處繼續"}</span>` : "";
     preview.innerHTML = `
-      ${f.preview ? `<img src="${f.preview}" alt="已選擇的照片預覽">` : `<div style="width:120px;height:120px;border-radius:12px;background:var(--rice);display:grid;place-items:center;color:var(--ink-soft);font-size:.8rem;flex:none">無法預覽<br>（仍會上傳）</div>`}
+      ${f.preview ? `<img src="${f.preview}" alt="已選擇的照片預覽">` : `<div style="width:120px;height:120px;border-radius:12px;background:var(--rice);display:grid;place-items:center;color:var(--ink-soft);font-size:.8rem;flex:none;text-align:center">無法預覽<br>（仍會上傳原檔）</div>`}
       <div class="meta">
         <span class="ok">✔ 已選擇</span>
         <b>${esc(f.name)}</b>
-        <span>${dims}${fmtSize(f.blob.size)}</span>
+        <span>${dims}${fmtSize(f.blob.size)}・原檔上傳</span>
+        ${resume}
         <div class="acts">
           <button type="button" class="btn btn-ghost" data-act="replace">更換照片</button>
           <button type="button" class="btn btn-ghost" data-act="remove">移除</button>
@@ -467,7 +486,170 @@ function setupUpload(key, boxSel, inputSel) {
     e.preventDefault(); drop.classList.remove("drag");
     take(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
   });
+  previewers[key] = showPreview;
 }
+
+/* ---------- 照片上傳：Google Drive API 可續傳上傳（Resumable Upload）＋分塊續傳 ----------
+ * 1. 向後端申請此檔案專用的「可續傳上傳網址」（後端以 Drive API 建立，權杖不會傳到網頁）。
+ * 2. 把原檔切成 8 MB 分塊，直接 PUT 到上傳網址（Content-Range），由瀏覽器直接推送到 Google 雲端硬碟。
+ * 3. 分塊失敗（網路中斷、手機切到背景等）→ 等待後向後端查詢雲端已收到多少位元組 → 從中斷處續傳。
+ *    上傳網址記在本機草稿，重新整理頁面後再選同一張照片，也會從中斷處繼續。
+ * 4. 直接上傳連續失敗、但後端連得上（例如網路或 CORS 限制）→ 改由後端代傳分塊。
+ */
+class UploadError extends Error {}
+const OFFLINE_MSG = "網路連線不穩，照片尚未上傳完成。請確認網路後再按一次「送出問卷」，會從中斷處繼續上傳，已上傳的部分不用重傳。";
+const sameFile = (u, f) => !!(u && f && u.name === f.name && u.size === f.size && u.lastModified === f.lastModified);
+function rememberUpload(kind, info) { state.uploads[kind] = info; saveDraft(); }
+function forgetUpload(kind) { delete state.uploads[kind]; saveDraft(); }
+
+/** 等待重試：最長 30 秒；網路恢復或頁面回到前景時提早繼續 */
+function waitRetry(n) {
+  const ms = Math.min(30000, 1000 * Math.pow(2, n));
+  return new Promise(resolve => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; clearTimeout(t); window.removeEventListener("online", finish); document.removeEventListener("visibilitychange", onVis); resolve(); };
+    const onVis = () => { if (document.visibilityState === "visible") setTimeout(finish, 500); };
+    const t = setTimeout(finish, ms);
+    window.addEventListener("online", finish);
+    document.addEventListener("visibilitychange", onVis);
+  });
+}
+
+/** 直接把一個分塊 PUT 到上傳網址（用 XHR 才能回報上傳進度） */
+function putDirect(url, blob, start, total, onBytes) {
+  return new Promise(resolve => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url, true);
+    xhr.timeout = CONFIG.CHUNK_TIMEOUT_MS;
+    xhr.setRequestHeader("Content-Range", `bytes ${start}-${start + blob.size - 1}/${total}`);
+    xhr.upload.onprogress = e => onBytes(e.loaded);
+    xhr.onload = () => {
+      let fileId = "";
+      if (xhr.status === 200 || xhr.status === 201) { try { fileId = JSON.parse(xhr.responseText).id || ""; } catch (e) {} }
+      const m = String(xhr.getResponseHeader("Range") || "").match(/bytes=0-(\d+)/);
+      // 308 但讀不到 Range 標頭時，先假設整個分塊已收到；若不正確，下一個分塊失敗時會向後端查詢正確位置
+      resolve({ status: xhr.status, next: m ? Number(m[1]) + 1 : start + blob.size, fileId });
+    };
+    xhr.onerror = xhr.ontimeout = xhr.onabort = () => resolve({ status: 0 });
+    xhr.send(blob);
+  });
+}
+
+/** 由後端代傳一個分塊（備援） */
+async function putProxy(up, kind, blob, start, total) {
+  let res;
+  try {
+    const data = await blobToBase64(blob);
+    res = await postJson({ action: "surveyUploadChunk", session: SESSION, submissionId: state.submissionId, kind, url: up.url, start, total, data }, CONFIG.CHUNK_TIMEOUT_MS);
+  } catch (e) { return { status: 0 }; }
+  if (!res || !res.chunk) return { status: res && res.ok === false && res.error !== "upload" ? 400 : 0, message: res && res.message };
+  if (res.done) return { status: 200, fileId: res.fileId };
+  if (res.expired) return { status: 404 };
+  if (res.status === 308) return { status: 308, next: res.next };
+  return { status: res.status || 0, message: res.message };
+}
+
+/** 向後端查詢上傳進度 → { done, fileId } | { status: 308, next } | { expired } | null（連不到後端） */
+async function uploadStatus(up, kind, total) {
+  try {
+    const r = await getJson({ action: "surveyUploadStatus", session: SESSION, submissionId: state.submissionId, kind, url: up.url, total });
+    return r && r.uploadStatus ? r : (r && r.ok === false ? r : null);
+  } catch (e) { return null; }
+}
+
+/** 向後端申請可續傳上傳網址 */
+async function newUploadSession(kind, file) {
+  for (let i = 1; ; i++) {
+    let r = null;
+    try {
+      r = await getJson({
+        action: "surveyUploadUrl", session: SESSION, submissionId: state.submissionId, kind,
+        empId: state.record.empId, type: file.type || "", ext: fileExt(file), size: file.size, origin: location.origin
+      });
+    } catch (e) { r = null; }
+    if (r && r.ok && r.uploadUrl) {
+      const up = { url: r.uploadUrl, mode: "direct", name: file.name, size: file.size, lastModified: file.lastModified, fileId: "" };
+      rememberUpload(kind, up);
+      return up;
+    }
+    if (r && r.ok === false && r.error !== "server") {
+      const err = new UploadError(r.message || "無法建立上傳連線。");
+      err.code = r.error; err.no = r.no;
+      throw err;
+    }
+    if (i >= CONFIG.MAX_RETRIES) throw new UploadError(r && r.message ? r.message : OFFLINE_MSG);
+    uploadNote("連線中斷，正在重新連線…");
+    await waitRetry(i);
+  }
+}
+
+/** 上傳一個檔案（分塊、可續傳），回傳雲端硬碟檔案 ID */
+async function uploadFile(kind, file, report) {
+  const total = file.size;
+  let up = sameFile(state.uploads[kind], file) ? state.uploads[kind] : null;
+  if (up && up.fileId) { report(total); return up.fileId; }
+  let offset = up ? null : 0;           // null＝先查詢雲端已收到多少（續傳）
+  let failures = 0, directFails = 0, restarts = 0;
+  if (!up) up = await newUploadSession(kind, file);
+  const finish = id => { up.fileId = id; rememberUpload(kind, up); report(total); return id; };
+  const restart = async () => {
+    if (++restarts > 2) throw new UploadError("上傳連線已失效，請重新整理頁面後再試一次。");
+    forgetUpload(kind);
+    up = await newUploadSession(kind, file);
+    offset = 0;
+  };
+
+  for (;;) {
+    if (offset === null) {
+      const st = await uploadStatus(up, kind, total);
+      if (st && st.done && st.fileId) return finish(st.fileId);
+      if (st && st.expired) { await restart(); continue; }
+      if (st && st.status === 308) {
+        offset = st.next;
+        report(offset);
+        // 直接上傳連續失敗、但後端連得上：改由後端代傳
+        if (up.mode === "direct" && directFails >= CONFIG.DIRECT_FAILS_BEFORE_PROXY) { up.mode = "proxy"; rememberUpload(kind, up); }
+      } else if (st && st.ok === false) {
+        throw new UploadError(st.message || "上傳失敗，請稍後再試。");
+      } else {
+        if (++failures > CONFIG.MAX_RETRIES) throw new UploadError(OFFLINE_MSG);
+        uploadNote("網路連線中斷，恢復後會自動從中斷處繼續上傳…");
+        await waitRetry(failures);
+        continue;
+      }
+    }
+    if (offset >= total) { offset = null; continue; }   // 已全部送出但沒收到完成回應：查詢結果
+
+    const blob = file.slice(offset, Math.min(offset + CONFIG.CHUNK_BYTES, total));
+    const start = offset;
+    const res = up.mode === "direct"
+      ? await putDirect(up.url, blob, start, total, n => report(start + n))
+      : await putProxy(up, kind, blob, start, total);
+
+    if (res.status === 200 || res.status === 201) {
+      if (res.fileId) return finish(res.fileId);
+      offset = null; continue;
+    }
+    if (res.status === 308) {
+      offset = res.next; failures = 0; directFails = 0;
+      report(offset);
+      uploadNote("");
+      continue;
+    }
+    if (res.status === 404 || res.status === 410) { await restart(); continue; }
+    if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+      throw new UploadError(res.message || `照片上傳失敗（HTTP ${res.status}），請稍後再試，或洽教學部（分機 57440）。`);
+    }
+    // 0（網路中斷）、5xx、408、429：等待後查詢進度，從中斷處續傳
+    if (up.mode === "direct" && res.status === 0) directFails++;
+    if (++failures > CONFIG.MAX_RETRIES) throw new UploadError(OFFLINE_MSG);
+    uploadNote("網路不穩，稍後會自動從中斷處繼續上傳…");
+    await waitRetry(failures);
+    offset = null;
+  }
+}
+
+function uploadNote(text) { const n = $("#overlayNote"); if (n) n.textContent = text; }
 
 /* ---------- 進度與檢查 ---------- */
 function answers() {
@@ -513,11 +695,13 @@ function markInvalid() {
 }
 
 /* ---------- 送出 ---------- */
-function overlay(on, title, text) {
+function overlay(on, title, text, bar) {
   const o = $("#overlay");
   o.classList.toggle("open", !!on);
   if (title) $("#overlayTitle").textContent = title;
   if (text != null) $("#overlayText").textContent = text;
+  if (bar != null) { $("#overlayBarWrap").classList.toggle("show", !!bar); if (bar) $("#overlayBar").style.width = "0%"; }
+  if (!on || title) uploadNote("");
 }
 function showMsg(text) {
   const m = $("#formMsg");
@@ -546,7 +730,7 @@ async function sendSurvey(payload) {
     overlay(true, "確認中…", "正在確認問卷是否已送達。");
     try {
       const st = await getJson({ action: "surveyStatus", session: SESSION, id: payload.submissionId });
-      if (st && st.found) return { ok: true, submitted: true, no: st.no, name: state.record && state.record.name, social: !!payload.social };
+      if (st && st.found) return { ok: true, submitted: true, no: st.no, name: state.record && state.record.name, social: !!payload.socialFileId };
     } catch (e) {}
   }
   return last || { ok: false, error: "network", message: "網路連線不穩定，問卷沒有送出。請確認網路後再按一次「送出問卷」，已填寫的內容與照片都還在。" };
@@ -575,7 +759,25 @@ async function onSubmit(e) {
       return;
     }
     state.submitting = true;
-    overlay(true, "準備照片中…", "");
+
+    // 1) 照片：直接分塊上傳到 Google 雲端硬碟（可續傳）
+    const jobs = [["photo", state.photo, "活動照"], ["social", state.social, "社群媒體截圖"]].filter(j => j[1]);
+    const totalBytes = jobs.reduce((n, j) => n + j[1].blob.size, 0);
+    const ids = {};
+    let base = 0;
+    overlay(true, "上傳照片中…", "", true);
+    for (const [kind, f, label] of jobs) {
+      const offsetBase = base;
+      ids[kind] = await uploadFile(kind, f.blob, n => {
+        const sent = offsetBase + n;
+        $("#overlayBar").style.width = Math.min(100, sent / totalBytes * 100).toFixed(1) + "%";
+        $("#overlayText").textContent = `${label}：${fmtSize(Math.min(n, f.blob.size))}／${fmtSize(f.blob.size)}（全部 ${Math.floor(sent / totalBytes * 100)}%）`;
+      });
+      base += f.blob.size;
+    }
+
+    // 2) 問卷：只送檔案 ID
+    overlay(true, "送出問卷中…", "照片已上傳完成，正在寫入問卷。", false);
     const payload = {
       action: "survey",
       session: SESSION,
@@ -583,30 +785,34 @@ async function onSubmit(e) {
       empId: state.record.empId,
       answers: answers(),
       story: $("#story").value.trim(),
-      photo: { type: state.photo.type, ext: state.photo.ext, data: await blobToBase64(state.photo.blob) },
-      social: state.social ? { type: state.social.type, ext: state.social.ext, data: await blobToBase64(state.social.blob) } : null
+      photoFileId: ids.photo,
+      socialFileId: ids.social || ""
     };
-    overlay(true, "送出中…", "正在上傳照片原檔與問卷，依網路速度約需 10 秒～2 分鐘，請勿關閉頁面。");
     const res = await sendSurvey(payload);
     if (res && res.ok && res.submitted) {
-      showDone(res, !!payload.social);
+      showDone(res, !!payload.socialFileId);
     } else {
       if (res && res.error === "duplicate") { state.blocked = res.no || "?"; renderProfile(); }
+      if (res && res.error === "reupload") { forgetUpload(res.kind || "photo"); refreshPreviews(); }
       showMsg((res && res.message) || "送出失敗，請稍後再試，或洽教學部（分機 57440）。");
       $("#submitCard").scrollIntoView({ behavior: "smooth", block: "center" });
     }
   } catch (err) {
-    showMsg("送出失敗：" + (err && err.message ? err.message : err) + "。請再按一次「送出問卷」，已填寫的內容都還在。");
+    if (err && err.code === "duplicate") { state.blocked = err.no || "?"; renderProfile(); }
+    showMsg(err instanceof UploadError ? err.message : "送出失敗：" + (err && err.message ? err.message : err) + "。請再按一次「送出問卷」，已填寫的內容都還在。");
+    $("#submitCard").scrollIntoView({ behavior: "smooth", block: "center" });
   } finally {
     state.submitting = false;
     overlay(false);
     btn.textContent = "送出問卷";
+    refreshPreviews();
     updateProgress();
   }
 }
 
 function showDone(res, social) {
   state.done = true;
+  state.uploads = {};
   clearDraft();
   const r = state.record || {};
   $("#doneSummary").innerHTML = `
@@ -657,9 +863,11 @@ function init() {
   $("#surveyForm").addEventListener("submit", onSubmit);
   $("#doneOk").addEventListener("click", closeDone);
 
-  // 還原草稿（人事號、10 題、最感動的一段話；照片不保存）
+  // 還原草稿（人事號、10 題、最感動的一段話、送出代碼與上傳進度；照片需重新選取，選同一張會從中斷處續傳）
   const d = loadDraft();
   if (d) {
+    if (d.sid && /^[A-Za-z0-9-]{8,64}$/.test(d.sid)) state.submissionId = d.sid;
+    if (d.uploads && typeof d.uploads === "object") state.uploads = d.uploads;
     if (d.empId) emp.value = d.empId;
     Object.keys(d.answers || {}).forEach(i => { const el = $(`#q${i}_${d.answers[i]}`); if (el) el.checked = true; });
     if (d.story) $("#story").value = d.story;
@@ -667,7 +875,7 @@ function init() {
   }
   updateProgress();
 
-  // 已選照片（照片不存草稿）或送出中時，離開頁面前提醒；文字與作答已存在草稿裡
+  // 已選照片（照片檔案無法存草稿）或上傳中時，離開頁面前提醒；文字與作答已存在草稿裡
   window.addEventListener("beforeunload", e => {
     if (state.done) return;
     if (state.photo || state.social || state.submitting) { e.preventDefault(); e.returnValue = ""; }

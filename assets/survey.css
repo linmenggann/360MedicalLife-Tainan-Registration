@@ -248,6 +248,12 @@ main{padding-bottom:3rem}
 .overlay-card b{display:block;font-family:var(--serif);font-size:1.15rem;color:#1f3a3d}
 .overlay-card p{color:var(--ink-soft);font-size:.88rem;margin-top:.4rem}
 @keyframes spin{to{transform:rotate(360deg)}}
+.up-bar{display:none;height:10px;border-radius:999px;background:var(--rice);border:1px solid var(--line);overflow:hidden;margin-top:1rem}
+.up-bar.show{display:block}
+.up-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--brick));transition:width .3s ease}
+.overlay-card .up-note{color:#8f5a0a;font-weight:700;min-height:0}
+.overlay-card .up-note:empty{display:none}
+.overlay-card .up-hint{font-size:.78rem;margin-top:.8rem}
 
 /* 完成視窗 */
 .modal{position:fixed;inset:0;z-index:100;display:none;place-items:center;background:rgba(43,42,40,.55);padding:1rem}

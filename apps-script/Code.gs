@@ -193,6 +193,7 @@ function onOpen() {
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
     .addSeparator()
     .addItem('建立活動滿意度調查分頁＋檢查雲端硬碟資料夾', 'setupSurvey')
+    .addItem('清除未完成送出的暫存照片（超過 1 天）', 'cleanupSurveyUploads')
     .addSeparator()
     .addItem('驗收測試：人事號不被轉成科學記號', 'testTextColumns')
     .addItem('清除人事號等欄位的前置撇號', 'fixApostrophes')
@@ -357,6 +358,8 @@ function doGet(e) {
   if (p.action === 'dashboard') return dashboardResponse_(p.key);
   if (p.action === 'surveyLookup') return json_(surveyLookup_(p.session, p.empId));
   if (p.action === 'surveyStatus') return json_(surveyStatus_(p.session, p.id));
+  if (p.action === 'surveyUploadUrl') return json_(surveyUploadUrl_(p));
+  if (p.action === 'surveyUploadStatus') return json_(surveyUploadStatus_(p));
   const cached = cacheGet_('counts');
   if (cached) { cached.cached = true; return json_(cached); }
   return json_(refreshCaches_().counts);
@@ -384,8 +387,9 @@ function doPost(e) {
   // 儀表板資料（不需鎖定；保留 POST 以相容舊版儀表板）
   if (d.action === 'dashboard') return dashboardResponse_(d.key);
 
-  // 活動滿意度調查（檔案先存雲端硬碟，只有決定編號、寫入一列時才鎖定）
+  // 活動滿意度調查（照片已由網頁直接上傳雲端硬碟；只有決定編號、寫入一列時才鎖定）
   if (d.action === 'survey') return json_(submitSurvey_(d));
+  if (d.action === 'surveyUploadChunk') return json_(surveyUploadChunk_(d));
 
   // 報名寫入（需鎖定避免同時報名超額）
   const lock = LockService.getScriptLock();
@@ -1295,11 +1299,12 @@ function publishStats() {
 /*
  * 流程：
  *   1. 網頁輸入人事號 → GET ?action=surveyLookup 由總表帶出梯次、身分、單位、姓名、職稱。
- *   2. 送出 → POST action=survey：
- *      a. 以人事號重新查總表（不採信網頁送來的姓名等資料）。
- *      b. 先把活動照（必填）與社群媒體截圖（選填）存進該梯次的雲端硬碟資料夾（暫時檔名）。
- *      c. 鎖定 → 決定「編號」（該分頁現有最大編號 + 1，從 1 開始）→ 檔案改名為「編號-姓名.副檔名」→ 寫入一列 → 解鎖。
- *   3. 每次送出帶一組送出代碼：Google 把 POST 轉成 GET、或網路中斷後網頁重送時，
+ *   2. 照片：網頁向後端申請 Drive API 可續傳上傳網址，直接把原檔分塊上傳到該梯次的雲端硬碟資料夾（暫時檔名），
+ *      不限檔案大小，中斷可續傳（見下方「照片上傳」一節）。
+ *   3. 送出 → POST action=survey（只帶檔案 ID）：
+ *      a. 以人事號重新查總表（不採信網頁送來的姓名等資料）；確認檔案是這份問卷上傳的。
+ *      b. 鎖定 → 決定「編號」（該分頁現有最大編號 + 1，從 1 開始）→ 檔案改名為「編號-姓名.副檔名」→ 寫入一列 → 解鎖。
+ *   4. 每次送出帶一組送出代碼：Google 把 POST 轉成 GET、或網路中斷後網頁重送時，
  *      同一組代碼不會重複寫入，直接回覆原本的編號。
  *   每人每梯次限填寫一次（使用者 2026-10-06 要求）：同一梯次分頁已有此人事號就不再寫入。
  *   （管理者加報而參加兩個梯次的人，兩個梯次的問卷各可填一次。）
@@ -1334,8 +1339,6 @@ const SURVEY_HEADERS = ['編號', '填寫時間', '梯次', '身分', '單位', 
 const SURVEY_TEXT_COLS = ['人事號', '單位', '姓名', '職稱', '最感動的一段話'];
 const SURVEY_STORY_MIN = 20;                 // 最感動的一段話至少字數（與 survey.js 相同）
 const SURVEY_STORY_MAX = 1000;
-const SURVEY_MAX_FILE_BYTES = 15 * 1024 * 1024;
-const SURVEY_IMAGE_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heif' };
 
 /** 取得（必要時建立）某梯次的活動滿意度調查分頁 */
 function surveySheet_(session) {
@@ -1453,33 +1456,208 @@ function surveyStatus_(session, id) {
   return hit ? { ok: true, found: true, no: hit.no } : { ok: true, found: false };
 }
 
+/* ---- 照片上傳：Google Drive API 可續傳上傳（Resumable Upload）＋分塊續傳 ----
+ *
+ * 1. 網頁 GET ?action=surveyUploadUrl → 後端以 Apps Script 擁有者的權杖向 Drive API 申請「可續傳的上傳網址」
+ *    （暫時檔名「上傳中-送出代碼-活動照.副檔名」、放在該梯次的資料夾），並帶入網頁的 Origin，
+ *    讓瀏覽器可以直接對這個網址上傳。權杖不會傳到網頁，網頁只拿到這一個檔案專用的上傳網址。
+ * 2. 網頁把檔案切成 8 MB 分塊，直接 PUT 到上傳網址（Content-Range）；中斷時查詢已收到的位元組數，從中斷處續傳。
+ * 3. 若瀏覽器無法直接連線上傳網址（例如網路或 CORS 限制），網頁改由後端代傳分塊
+ *    （POST action=surveyUploadChunk），續傳查詢一律由後端代查（GET ?action=surveyUploadStatus）。
+ * 4. 送出問卷時只傳檔案 ID；後端確認檔案確實是這份問卷上傳的，再改名為「編號-姓名.副檔名」。
+ * 不限檔案大小（受 Apps Script 擁有者的雲端硬碟空間限制）。
+ */
+const SURVEY_KINDS = { photo: '活動照', social: '社群媒體截圖' };
+const SURVEY_UPLOAD_EXTS = ['jpg', 'png', 'webp', 'gif', 'heic', 'heif', 'tif', 'tiff', 'bmp', 'dng', 'cr2', 'cr3', 'nef', 'arw', 'orf', 'rw2', 'raf'];
+// 允許直接上傳的網頁來源（上傳網址只對這些 Origin 開放 CORS）
+const SURVEY_UPLOAD_ORIGINS = [/^https:\/\/linmenggann\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
+const SURVEY_TEMP_PREFIX = '上傳中-';
+const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name';
+
 /** 檔名只用「編號-姓名」：去掉雲端硬碟與作業系統不允許的字元 */
 function safeFileName_(s) {
   const v = String(s || '').replace(/[\\/:*?"<>|\u0000-\u001F]/g, '').replace(/\s+/g, ' ').trim();
   return v || '未具名';
 }
 
-/** 把網頁送來的 { type, ext, data(base64) } 存進資料夾；回傳 { file, ext } */
-function saveSurveyFile_(f, folderId, tempName) {
-  const type = String(f.type || '').toLowerCase();
-  if (type && type.indexOf('image/') !== 0) throw new Error('只接受圖片檔');
-  let ext = SURVEY_IMAGE_EXT[type] || String(f.ext || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (ext === 'jpeg') ext = 'jpg';
-  if (!ext) ext = 'jpg';
-  const bytes = Utilities.base64Decode(String(f.data || ''));
-  if (!bytes.length) throw new Error('檔案是空的');
-  if (bytes.length > SURVEY_MAX_FILE_BYTES) throw new Error('檔案超過 15 MB');
-  const blob = Utilities.newBlob(bytes, type || 'image/jpeg', tempName + '.' + ext);
-  const file = DriveApp.getFolderById(folderId).createFile(blob);
-  return { file: file, ext: ext };
+const surveyTempName_ = (sid, kind, ext) => SURVEY_TEMP_PREFIX + sid + '-' + SURVEY_KINDS[kind] + '.' + ext;
+const validSid_ = sid => /^[A-Za-z0-9-]{8,64}$/.test(sid);
+const isDriveUploadUrl_ = u => /^https:\/\/www\.googleapis\.com\/upload\/drive\/v3\/files\?[^\s#]*\bupload_id=[\w-]+/.test(String(u || ''));
+
+/** 副檔名：小寫、jpeg → jpg，必須是允許的圖片格式 */
+function surveyExt_(ext) {
+  let e = String(ext || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (e === 'jpeg' || e === 'jpe') e = 'jpg';
+  return SURVEY_UPLOAD_EXTS.indexOf(e) === -1 ? '' : e;
 }
 
-/** POST action=survey */
+/** 取 HTTP 回應標頭（不分大小寫） */
+function header_(res, name) {
+  const h = res.getAllHeaders ? res.getAllHeaders() : res.getHeaders();
+  const key = Object.keys(h).find(k => k.toLowerCase() === name.toLowerCase());
+  const v = key ? h[key] : '';
+  return Array.isArray(v) ? v[0] : v;
+}
+
+/** Drive 可續傳上傳的回應 → { status, next（下一個要傳的位元組）, done, fileId, expired } */
+function driveUploadResult_(res) {
+  const code = res.getResponseCode();
+  if (code === 200 || code === 201) {
+    let id = '';
+    try { id = JSON.parse(res.getContentText()).id || ''; } catch (e) {}
+    return { ok: true, status: code, done: true, fileId: id };
+  }
+  if (code === 308) {
+    const range = String(header_(res, 'Range') || '');
+    const m = range.match(/bytes=0-(\d+)/);
+    return { ok: true, status: 308, next: m ? Number(m[1]) + 1 : 0 };
+  }
+  if (code === 404 || code === 410) return { ok: true, status: code, expired: true };
+  let message = '上傳失敗（HTTP ' + code + '）';
+  if (code === 403 && /storageQuotaExceeded|quota/i.test(res.getContentText())) message = '雲端硬碟空間已滿，請洽教學部（分機 57440）。';
+  return { ok: false, status: code, error: 'upload', message: message };
+}
+
+/** 檢查上傳相關請求的共同參數；回傳 { session, sid, kind } 或 { error } */
+function surveyUploadArgs_(p) {
+  const session = String(p.session || '').trim();
+  const sid = String(p.submissionId || p.id || '').trim();
+  const kind = String(p.kind || '').trim();
+  if (!SURVEY_SHEETS[session]) return { error: { ok: false, error: 'invalid', message: '梯次不正確' } };
+  if (!validSid_(sid)) return { error: { ok: false, error: 'invalid', message: '送出代碼不正確，請重新整理頁面。' } };
+  if (!SURVEY_KINDS[kind]) return { error: { ok: false, error: 'invalid', message: '上傳類別不正確' } };
+  return { session: session, sid: sid, kind: kind };
+}
+
+/** GET ?action=surveyUploadUrl：申請可續傳的上傳網址 */
+function surveyUploadUrl_(p) {
+  const a = surveyUploadArgs_(p);
+  if (a.error) return a.error;
+  const size = Number(p.size);
+  if (!(size > 0) || Math.floor(size) !== size) return { ok: false, error: 'invalid', message: '檔案大小不正確' };
+  const ext = surveyExt_(p.ext);
+  if (!ext) return { ok: false, error: 'invalid', message: '只能上傳圖片檔（JPG、PNG、HEIC、RAW 等）。' };
+  let type = String(p.type || '').toLowerCase().trim();
+  if (type && type.indexOf('image/') !== 0) type = '';           // 例如 application/octet-stream：交給雲端硬碟判斷
+  const origin = String(p.origin || '').trim();
+  if (!SURVEY_UPLOAD_ORIGINS.some(re => re.test(origin))) return { ok: false, error: 'invalid', message: '不允許的網頁來源' };
+
+  // 必須是此梯次的報名者、且尚未填寫過
+  const empId = normalizeId(p.empId);
+  let found = findRegistration_(a.session, empId, registrationList_(false));
+  if (!found.record) found = findRegistration_(a.session, empId, registrationList_(true));
+  if (!empId || !found.record) return { ok: false, error: 'notfound', message: '查無此人事號的' + a.session + '報名資料。' };
+  const sheet = ss_().getSheetByName(SURVEY_SHEETS[a.session]);
+  if (sheet) {
+    const entries = surveyEntries_(sheet);
+    const done = entries.find(x => x.id === a.sid);
+    if (done) return { ok: false, error: 'submitted', no: done.no, message: '這份問卷已送出（編號 ' + done.no + '）。' };
+    const prior = entries.find(x => x.empId === found.record.empId);
+    if (prior) return surveyDuplicate_(a.session, prior);
+  }
+
+  const meta = { name: surveyTempName_(a.sid, a.kind, ext), parents: [SURVEY_FOLDERS[a.session][a.kind]] };
+  if (type) meta.mimeType = type;
+  const res = UrlFetchApp.fetch(DRIVE_UPLOAD_API, {
+    method: 'post',
+    contentType: 'application/json; charset=UTF-8',
+    payload: JSON.stringify(meta),
+    headers: {
+      Authorization: 'Bearer ' + ScriptApp.getOAuthToken(),
+      'X-Upload-Content-Length': String(size),
+      'X-Upload-Content-Type': type || 'application/octet-stream',
+      Origin: origin                                   // 讓瀏覽器（此 Origin）可以直接上傳到這個網址
+    },
+    muteHttpExceptions: true
+  });
+  const code = res.getResponseCode();
+  const url = code === 200 ? String(header_(res, 'Location') || '') : '';
+  if (!isDriveUploadUrl_(url)) {
+    Logger.log('申請上傳網址失敗：' + code + ' ' + res.getContentText().slice(0, 500));
+    return { ok: false, error: 'server', message: '無法建立上傳連線（HTTP ' + code + '），請稍後再試，或洽教學部（分機 57440）。' };
+  }
+  return { ok: true, uploadUrl: url, name: meta.name };
+}
+
+/** GET ?action=surveyUploadStatus：由後端查詢上傳進度（續傳用） */
+function surveyUploadStatus_(p) {
+  const a = surveyUploadArgs_(p);
+  if (a.error) return a.error;
+  const url = String(p.url || '');
+  const total = Number(p.total);
+  if (!isDriveUploadUrl_(url) || !(total > 0)) return { ok: false, error: 'invalid', message: '上傳網址不正確' };
+  const res = UrlFetchApp.fetch(url, {
+    method: 'put', headers: { 'Content-Range': 'bytes */' + total },
+    muteHttpExceptions: true, followRedirects: false
+  });
+  const out = driveUploadResult_(res);
+  out.uploadStatus = true;
+  return out;
+}
+
+/** POST action=surveyUploadChunk：瀏覽器無法直接連線上傳網址時，由後端代傳一個分塊 */
+function surveyUploadChunk_(d) {
+  const a = surveyUploadArgs_(d);
+  if (a.error) return a.error;
+  const url = String(d.url || '');
+  const start = Number(d.start), total = Number(d.total);
+  if (!isDriveUploadUrl_(url) || !(start >= 0) || !(total > 0)) return { ok: false, error: 'invalid', message: '上傳參數不正確' };
+  const bytes = Utilities.base64Decode(String(d.data || ''));
+  if (!bytes.length || start + bytes.length > total) return { ok: false, error: 'invalid', message: '分塊大小不正確' };
+  const end = start + bytes.length - 1;
+  const res = UrlFetchApp.fetch(url, {
+    method: 'put',
+    payload: Utilities.newBlob(bytes, 'application/octet-stream'),
+    headers: { 'Content-Range': 'bytes ' + start + '-' + end + '/' + total },
+    muteHttpExceptions: true, followRedirects: false
+  });
+  const out = driveUploadResult_(res);
+  out.chunk = true;
+  return out;
+}
+
+/** 確認檔案確實是這份問卷（送出代碼）上傳到正確資料夾的暫存檔；回傳 { file, ext } */
+function surveyUploadedFile_(id, session, kind, sid) {
+  const label = SURVEY_KINDS[kind];
+  let file;
+  try { file = DriveApp.getFileById(String(id)); } catch (e) { file = null; }
+  const prefix = SURVEY_TEMP_PREFIX + sid + '-' + label + '.';
+  if (!file || file.isTrashed() || file.getName().indexOf(prefix) !== 0) {
+    const err = new Error(label + '找不到或已失效，請重新選擇照片後再送出一次。');
+    err.reupload = kind;
+    throw err;
+  }
+  const folderId = SURVEY_FOLDERS[session][kind];
+  const parents = file.getParents();
+  let inFolder = false;
+  while (parents.hasNext()) if (parents.next().getId() === folderId) inFolder = true;
+  if (!inFolder) {
+    const err = new Error(label + '不在正確的資料夾，請重新選擇照片後再送出一次。');
+    err.reupload = kind;
+    throw err;
+  }
+  return { file: file, ext: surveyExt_(file.getName().slice(prefix.length)) || 'jpg' };
+}
+
+/** 把這份問卷沒有用到的暫存檔丟到垃圾桶（例如上傳後又換了一張照片） */
+function trashSurveyTemps_(session, sid, keepIds) {
+  Object.keys(SURVEY_KINDS).forEach(kind => {
+    try {
+      const it = DriveApp.getFolderById(SURVEY_FOLDERS[session][kind]).searchFiles('title contains "' + SURVEY_TEMP_PREFIX + sid + '" and trashed = false');
+      while (it.hasNext()) {
+        const f = it.next();
+        if (keepIds.indexOf(f.getId()) === -1 && f.getName().indexOf(SURVEY_TEMP_PREFIX + sid + '-') === 0) f.setTrashed(true);
+      }
+    } catch (e) { Logger.log('清除暫存檔失敗：' + e); }
+  });
+}
+
+/** POST action=survey：寫入問卷（照片已由網頁上傳到雲端硬碟，這裡只收檔案 ID） */
 function submitSurvey_(d) {
   const session = String(d.session || '').trim();
   if (!SURVEY_SHEETS[session]) return { ok: false, error: 'invalid', message: '梯次不正確' };
   const submissionId = String(d.submissionId || '').trim();
-  if (!/^[A-Za-z0-9-]{8,64}$/.test(submissionId)) return { ok: false, error: 'invalid', message: '送出代碼不正確，請重新整理頁面後再送出。' };
+  if (!validSid_(submissionId)) return { ok: false, error: 'invalid', message: '送出代碼不正確，請重新整理頁面後再送出。' };
   const empId = normalizeId(d.empId);
   if (!empId) return { ok: false, error: 'invalid', message: '請填寫人事號' };
   const answers = Array.isArray(d.answers) ? d.answers.map(Number) : [];
@@ -1489,9 +1667,9 @@ function submitSurvey_(d) {
   const story = txt_(d.story);
   if (story.length < SURVEY_STORY_MIN) return { ok: false, error: 'invalid', message: '最感動的一段話請至少寫 ' + SURVEY_STORY_MIN + ' 個字。' };
   if (story.length > SURVEY_STORY_MAX) return { ok: false, error: 'invalid', message: '最感動的一段話請在 ' + SURVEY_STORY_MAX + ' 字以內。' };
-  if (!d.photo || !d.photo.data) return { ok: false, error: 'invalid', message: '請上傳活動照。' };
-  const notImage = f => f && f.data && f.type && String(f.type).toLowerCase().indexOf('image/') !== 0;
-  if (notImage(d.photo) || notImage(d.social)) return { ok: false, error: 'invalid', message: '只能上傳圖片檔（JPG、PNG、HEIC 等）。' };
+  const photoId = String(d.photoFileId || '').trim();
+  const socialId = String(d.socialFileId || '').trim();
+  if (!photoId) return { ok: false, error: 'invalid', message: '請上傳活動照。' };
 
   // 以人事號重新查總表（不採信網頁送來的姓名、單位等）
   const found = findRegistration_(session, empId, registrationList_(true));
@@ -1508,48 +1686,38 @@ function submitSurvey_(d) {
   const sheet = surveySheet_(session);
   const entries0 = surveyEntries_(sheet);
   const done = entries0.find(x => x.id === submissionId);
-  if (done) return { ok: true, submitted: true, no: done.no, name: reg.name, social: false, repeated: true };
+  if (done) return { ok: true, submitted: true, no: done.no, name: reg.name, social: !!socialId, repeated: true };
   const prior = entries0.find(x => x.empId === reg.empId);
-  if (prior) return surveyDuplicate_(session, prior);
+  if (prior) { trashSurveyTemps_(session, submissionId, []); return surveyDuplicate_(session, prior); }
 
-  const folders = SURVEY_FOLDERS[session];
-  const saved = [];
+  let photo, social = null;
   try {
-    // 1) 存檔（較久，不佔用鎖定）
-    const photo = saveSurveyFile_(d.photo, folders.photo, '上傳中-' + submissionId + '-活動照');
-    saved.push(photo.file);
-    let social = null;
-    if (d.social && d.social.data) {
-      social = saveSurveyFile_(d.social, folders.social, '上傳中-' + submissionId + '-社群媒體截圖');
-      saved.push(social.file);
-    }
+    photo = surveyUploadedFile_(photoId, session, 'photo', submissionId);
+    if (socialId) social = surveyUploadedFile_(socialId, session, 'social', submissionId);
+  } catch (err) {
+    return { ok: false, error: 'reupload', kind: err.reupload || 'photo', message: err.message };
+  }
 
-    // 2) 鎖定：決定編號 → 檔案改名 → 寫入一列
+  try {
+    // 鎖定：決定編號 → 檔案改名 → 寫入一列（照片已在雲端硬碟，鎖定時間很短）
     const lock = LockService.getScriptLock();
-    if (!lock.tryLock(30000)) {
-      saved.forEach(f => { try { f.setTrashed(true); } catch (e) {} });
-      return { ok: false, error: 'busy', message: '目前填寫人數較多，系統忙碌中，請稍候再送出一次。' };
-    }
-    let no;
+    if (!lock.tryLock(30000)) return { ok: false, error: 'busy', message: '目前填寫人數較多，系統忙碌中，請稍候再送出一次。' };
+    let no, photoName, socialName = '';
     try {
       const entries = surveyEntries_(sheet);
       const again = entries.find(x => x.id === submissionId);
-      if (again) {
-        saved.forEach(f => { try { f.setTrashed(true); } catch (e) {} });
-        return { ok: true, submitted: true, no: again.no, name: reg.name, social: false, repeated: true };
-      }
+      if (again) return { ok: true, submitted: true, no: again.no, name: reg.name, social: !!social, repeated: true };
       // 同一人幾乎同時送出兩份（例如兩支手機）：鎖定內再檢查一次
       const priorNow = entries.find(x => x.empId === reg.empId);
       if (priorNow) {
-        saved.forEach(f => { try { f.setTrashed(true); } catch (e) {} });
+        [photo, social].forEach(f => { if (f) try { f.file.setTrashed(true); } catch (e) {} });
         return surveyDuplicate_(session, priorNow);
       }
       no = entries.reduce((m, x) => Math.max(m, x.no), 0) + 1;
       const base = no + '-' + safeFileName_(reg.name);
-      const photoName = base + '.' + photo.ext;
+      photoName = base + '.' + photo.ext;
       photo.file.setName(photoName);
-      const socialName = social ? base + '.' + social.ext : '';
-      if (social) social.file.setName(socialName);
+      if (social) { socialName = base + '.' + social.ext; social.file.setName(socialName); }
 
       const headers = surveyHeaders_(sheet);
       const values = {
@@ -1572,28 +1740,80 @@ function submitSurvey_(d) {
     } finally {
       lock.releaseLock();
     }
+    trashSurveyTemps_(session, submissionId, [photoId, socialId].filter(Boolean));
     return { ok: true, submitted: true, no: no, name: reg.name, social: !!social };
   } catch (err) {
-    saved.forEach(f => { try { f.setTrashed(true); } catch (e) {} });
+    // 不刪除已上傳的照片：網頁重送時會沿用同一組檔案 ID
     return { ok: false, error: 'server', message: '送出失敗，請稍後再試一次（' + (err && err.message ? err.message : err) + '）。' };
   }
 }
 
-/** 選單：建立三個活動滿意度調查分頁，並檢查六個雲端硬碟資料夾能否存取 */
+/** 選單：建立三個活動滿意度調查分頁，檢查六個雲端硬碟資料夾，並實際測試一次可續傳上傳 */
 function setupSurvey() {
   const lines = [];
   SESSIONS.forEach(s => {
     ensureSurveySheet_(s);
     lines.push('✔ 分頁「' + SURVEY_SHEETS[s] + '」');
-    [['photo', '活動照'], ['social', '社群媒體截圖']].forEach(([k, label]) => {
+    Object.keys(SURVEY_KINDS).forEach(k => {
       try {
         const folder = DriveApp.getFolderById(SURVEY_FOLDERS[s][k]);
-        lines.push('　✔ ' + s + label + '資料夾：' + folder.getName());
+        lines.push('　✔ ' + s + SURVEY_KINDS[k] + '資料夾：' + folder.getName());
       } catch (err) {
-        lines.push('　✘ ' + s + label + '資料夾無法存取（' + SURVEY_FOLDERS[s][k] + '）：請確認執行 Apps Script 的帳號有此資料夾的編輯權限');
+        lines.push('　✘ ' + s + SURVEY_KINDS[k] + '資料夾無法存取（' + SURVEY_FOLDERS[s][k] + '）：請確認執行 Apps Script 的帳號有此資料夾的編輯權限');
       }
     });
   });
+  lines.push('');
+  lines.push(testResumableUpload_());
   SpreadsheetApp.flush();
   SpreadsheetApp.getUi().alert('活動滿意度調查設定\n\n' + lines.join('\n'));
+}
+
+/** 以 Drive API 可續傳上傳一個 2 個分塊的小測試檔到第一梯次活動照資料夾，成功後丟到垃圾桶 */
+function testResumableUpload_() {
+  try {
+    const total = 512 * 1024 + 10;                    // 第一塊 512 KB（256 KB 的倍數）＋ 第二塊 10 bytes
+    const init = UrlFetchApp.fetch(DRIVE_UPLOAD_API, {
+      method: 'post', contentType: 'application/json; charset=UTF-8',
+      payload: JSON.stringify({ name: '上傳測試（可刪除）.bin', parents: [SURVEY_FOLDERS[SESSIONS[0]].photo] }),
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'X-Upload-Content-Length': String(total) },
+      muteHttpExceptions: true
+    });
+    if (init.getResponseCode() !== 200) {
+      const body = init.getContentText();
+      const hint = /has not been used|is disabled|accessNotConfigured/i.test(body)
+        ? '請在 Apps Script 編輯器左側「服務」按 ＋ 加入「Drive API」後再試一次。' : body.slice(0, 200);
+      return '✘ 可續傳上傳測試失敗（申請上傳網址 HTTP ' + init.getResponseCode() + '）：' + hint;
+    }
+    const url = String(header_(init, 'Location'));
+    const bytes = new Array(total).fill(65);
+    const put = (from, to) => UrlFetchApp.fetch(url, {
+      method: 'put', payload: Utilities.newBlob(bytes.slice(from, to + 1), 'application/octet-stream'),
+      headers: { 'Content-Range': 'bytes ' + from + '-' + to + '/' + total }, muteHttpExceptions: true, followRedirects: false
+    });
+    const r1 = driveUploadResult_(put(0, 512 * 1024 - 1));
+    if (r1.status !== 308 || r1.next !== 512 * 1024) return '✘ 可續傳上傳測試失敗（第一個分塊回應 ' + r1.status + '）';
+    const r2 = driveUploadResult_(put(512 * 1024, total - 1));
+    if (!r2.done || !r2.fileId) return '✘ 可續傳上傳測試失敗（最後一個分塊回應 ' + r2.status + '）';
+    DriveApp.getFileById(r2.fileId).setTrashed(true);
+    return '✔ Drive API 可續傳上傳（分塊）測試成功';
+  } catch (err) {
+    return '✘ 可續傳上傳測試失敗：' + (err && err.message ? err.message : err);
+  }
+}
+
+/** 選單：清除超過 1 天、沒有完成送出的暫存照片（檔名「上傳中-」開頭） */
+function cleanupSurveyUploads() {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  let n = 0;
+  SESSIONS.forEach(s => Object.keys(SURVEY_KINDS).forEach(k => {
+    try {
+      const it = DriveApp.getFolderById(SURVEY_FOLDERS[s][k]).searchFiles('title contains "' + SURVEY_TEMP_PREFIX + '" and trashed = false');
+      while (it.hasNext()) {
+        const f = it.next();
+        if (f.getName().indexOf(SURVEY_TEMP_PREFIX) === 0 && f.getDateCreated().getTime() < cutoff) { f.setTrashed(true); n++; }
+      }
+    } catch (e) { Logger.log(s + SURVEY_KINDS[k] + '：' + e); }
+  }));
+  SpreadsheetApp.getUi().alert('已將 ' + n + ' 個超過 1 天未完成送出的暫存照片移到垃圾桶。');
 }
