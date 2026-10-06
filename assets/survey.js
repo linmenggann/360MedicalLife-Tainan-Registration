@@ -9,12 +9,11 @@
 const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
   LOOKUP_TIMEOUT_MS: 25000,
-  SUBMIT_TIMEOUT_MS: 120000,
+  SUBMIT_TIMEOUT_MS: 300000,     // 原檔上傳，行動網路較慢時需要較久
   STORY_MIN: 20,                 // 與 Code.gs 的 SURVEY_STORY_MIN 相同
   STORY_MAX: 1000,
-  MAX_SIDE: 2560,                // 照片長邊縮到 2560 px 以內再上傳（JPEG 品質 0.88）
-  JPEG_QUALITY: 0.88,
-  KEEP_JPEG_BYTES: 2.5 * 1024 * 1024,   // 尺寸已在範圍內且小於此大小的 JPEG 直接上傳原檔
+  // 照片不壓縮、原檔上傳。每張上限 15 MB（與 Code.gs 相同）：兩張合計 30 MB，Base64 後約 40 MB，
+  // 仍在 Apps Script 單次請求的大小上限內
   MAX_FILE_BYTES: 15 * 1024 * 1024
 };
 
@@ -232,7 +231,7 @@ function render() {
             ${ICONS.camera}
             <strong>點這裡選擇活動照</strong>
             <span>手機可直接拍照或從相簿選取；電腦也可以把照片拖曳到這裡</span>
-            <span>JPG、PNG、HEIC，15 MB 以內（會自動壓縮）</span>
+            <span>JPG、PNG、HEIC，原檔上傳，每張 15 MB 以內</span>
           </label>
           <div class="preview"></div>
           <p class="err">請上傳一張活動照。</p>
@@ -276,7 +275,7 @@ function render() {
           <label class="drop" for="socialInput">
             ${ICONS.phone}
             <strong>點這裡上傳社群媒體截圖</strong>
-            <span>JPG、PNG、HEIC，15 MB 以內（會自動壓縮）</span>
+            <span>JPG、PNG、HEIC，原檔上傳，每張 15 MB 以內</span>
           </label>
           <div class="preview"></div>
         </div>
@@ -298,14 +297,37 @@ const state = {
   record: null,            // 查詢到的報名資料
   lookedUp: "",            // 已查詢的人事號（正規化後）
   lookupSeq: 0,
-  photo: null,             // { blob, type, ext, preview, name, w, h, original }
+  photo: null,             // { blob（原檔）, type, ext, preview, name, w, h }
   social: null,
+  blocked: null,           // 此人事號已填寫過本梯次問卷時的編號（每人限填一次）
   submissionId: newId(),   // 同一份問卷重送時沿用，後端據此避免重複寫入
   submitting: false,
   done: false
 };
 
 /* ---------- 1. 人事號查詢 ---------- */
+function renderProfile() {
+  const r = state.record;
+  if (!r) return;
+  const dl = `
+    <dl>
+      <div><dt>梯次</dt><dd>${esc(r.session)}</dd></div>
+      <div><dt>身分</dt><dd>${esc(r.identity)}</dd></div>
+      <div><dt>單位</dt><dd>${esc(r.unit)}</dd></div>
+      <div><dt>姓名</dt><dd>${esc(r.name)}</dd></div>
+      <div><dt>人事號</dt><dd>${esc(r.empId)}</dd></div>
+      <div><dt>職稱</dt><dd>${esc(r.title)}</dd></div>
+    </dl>`;
+  if (state.blocked) {
+    showProfile("error", `
+      <div class="profile-title" style="color:#8f2416">您已填寫過${esc(SESSION)}問卷（編號 ${esc(state.blocked)}）</div>
+      ${dl}
+      <p class="note">每人限填寫一次，無法再次送出。如需修改請洽教學部（分機 57440）。</p>`);
+  } else {
+    showProfile("ok", `<div class="profile-title">✔ 已找到您的報名資料，請確認</div>${dl}<p class="note">資料有誤請洽教學部（分機 57440）。</p>`);
+  }
+}
+
 function showProfile(kind, html) {
   const p = $("#profile");
   p.className = "profile show " + kind;
@@ -318,10 +340,10 @@ async function lookup(force) {
   const id = normalizeId(input.value);
   input.value = id;
   $("#empField").classList.remove("invalid");
-  if (!id) { state.record = null; state.lookedUp = ""; hideProfile(); updateProgress(); return false; }
+  if (!id) { state.record = null; state.blocked = null; state.lookedUp = ""; hideProfile(); updateProgress(); return false; }
   if (!force && state.lookedUp === id && state.record) return true;
   const seq = ++state.lookupSeq;
-  state.record = null; state.lookedUp = id;
+  state.record = null; state.blocked = null; state.lookedUp = id;
   showProfile("loading", "查詢報名資料中…");
   $("#lookupBtn").disabled = true;
   try {
@@ -329,20 +351,8 @@ async function lookup(force) {
     if (seq !== state.lookupSeq) return false;
     if (res && res.ok && res.found && res.record) {
       state.record = res.record;
-      const r = res.record;
-      const again = (res.submittedBefore || []).length
-        ? `<p class="again">您已填寫過本問卷（編號 ${res.submittedBefore.map(esc).join("、")}）。如需補充，可以再送出一次，系統會新增一筆紀錄。</p>` : "";
-      showProfile("ok", `
-        <div class="profile-title">✔ 已找到您的報名資料，請確認</div>
-        <dl>
-          <div><dt>梯次</dt><dd>${esc(r.session)}</dd></div>
-          <div><dt>身分</dt><dd>${esc(r.identity)}</dd></div>
-          <div><dt>單位</dt><dd>${esc(r.unit)}</dd></div>
-          <div><dt>姓名</dt><dd>${esc(r.name)}</dd></div>
-          <div><dt>人事號</dt><dd>${esc(r.empId)}</dd></div>
-          <div><dt>職稱</dt><dd>${esc(r.title)}</dd></div>
-        </dl>
-        <p class="note">資料有誤請洽教學部（分機 57440）。</p>${again}`);
+      state.blocked = (res.submittedBefore || [])[0] || null;
+      renderProfile();
     } else if (res && res.error === "notfound") {
       const links = (res.otherSessions || []).filter(s => SESSIONS[s])
         .map(s => `<a href="${SESSIONS[s].page}">前往${esc(s)}問卷 →</a>`).join("　");
@@ -377,35 +387,19 @@ function loadImage(file) {
 const extOf = name => ((String(name).match(/\.([a-z0-9]+)$/i) || [])[1] || "").toLowerCase();
 const TYPE_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/heic": "heic", "image/heif": "heif" };
 
-/** 縮小並轉成 JPEG（長邊 ≤ 2560 px）；瀏覽器無法解碼的格式（如電腦版 Chrome 的 HEIC）改傳原檔 */
+/** 不壓縮、原檔上傳：只檢查是否為圖片與大小上限，並產生預覽（電腦版 Chrome 無法顯示 HEIC，僅不顯示預覽，仍上傳原檔） */
 async function prepareImage(file) {
   const looksImage = /^image\//.test(file.type) || /^(jpe?g|png|webp|gif|heic|heif)$/.test(extOf(file.name));
   if (!looksImage) throw new Error("請選擇圖片檔（JPG、PNG、HEIC 等）。");
-  const original = () => {
-    if (file.size > CONFIG.MAX_FILE_BYTES) throw new Error("照片超過 15 MB，請改選其他照片。");
-    const type = (file.type || "").toLowerCase() || ("image/" + (extOf(file.name) === "jpg" ? "jpeg" : extOf(file.name) || "jpeg"));
-    return { blob: file, type, ext: TYPE_EXT[type] || extOf(file.name) || "jpg", name: file.name, original: true };
-  };
-  let loaded;
-  try { loaded = await loadImage(file); } catch (e) { return Object.assign(original(), { preview: null }); }
-  const { img, url } = loaded;
-  const w = img.naturalWidth, h = img.naturalHeight;
-  const scale = Math.min(1, CONFIG.MAX_SIDE / Math.max(w, h, 1));
-  if (file.type === "image/jpeg" && scale === 1 && file.size <= CONFIG.KEEP_JPEG_BYTES) {
-    return Object.assign(original(), { preview: url, w, h });
-  }
-  const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = cw; canvas.height = ch;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cw, ch);        // PNG 透明背景轉 JPEG 時補白底
-  ctx.drawImage(img, 0, 0, cw, ch);
-  const blob = await new Promise(r => canvas.toBlob(r, "image/jpeg", CONFIG.JPEG_QUALITY));
-  if (!blob || (scale === 1 && blob.size >= file.size && /^image\/(jpeg|png|webp)$/.test(file.type))) {
-    return Object.assign(original(), { preview: url, w, h });
-  }
-  if (blob.size > CONFIG.MAX_FILE_BYTES) throw new Error("照片超過 15 MB，請改選其他照片。");
-  return { blob, type: "image/jpeg", ext: "jpg", name: file.name, preview: url, w: cw, h: ch, original: false };
+  if (!file.size) throw new Error("這個檔案是空的，請改選其他照片。");
+  if (file.size > CONFIG.MAX_FILE_BYTES) throw new Error(`這張照片 ${fmtSize(file.size)}，超過每張 15 MB 的上限，請改選其他照片。`);
+  const type = (file.type || "").toLowerCase() || ("image/" + (extOf(file.name) === "jpg" ? "jpeg" : extOf(file.name) || "jpeg"));
+  const out = { blob: file, type, ext: TYPE_EXT[type] || extOf(file.name) || "jpg", name: file.name, preview: null, w: 0, h: 0 };
+  try {
+    const { img, url } = await loadImage(file);
+    Object.assign(out, { preview: url, w: img.naturalWidth, h: img.naturalHeight });
+  } catch (e) { /* 無法預覽 */ }
+  return out;
 }
 
 function blobToBase64(blob) {
@@ -424,7 +418,7 @@ function setupUpload(key, boxSel, inputSel) {
     if (!file) return;
     box.classList.add("busy");
     const strong = drop.querySelector("strong"), label = strong.textContent;
-    strong.textContent = "處理照片中…";
+    strong.textContent = "讀取照片中…";
     try {
       const prepared = await prepareImage(file);
       if (state[key] && state[key].preview) URL.revokeObjectURL(state[key].preview);
@@ -445,7 +439,7 @@ function setupUpload(key, boxSel, inputSel) {
     if (!f) { box.classList.remove("has-file"); preview.innerHTML = ""; return; }
     const dims = f.w ? `${f.w}×${f.h}・` : "";
     preview.innerHTML = `
-      ${f.preview ? `<img src="${f.preview}" alt="已選擇的照片預覽">` : `<div style="width:120px;height:120px;border-radius:12px;background:var(--rice);display:grid;place-items:center;color:var(--ink-soft);font-size:.8rem;flex:none">無法預覽<br>（將上傳原檔）</div>`}
+      ${f.preview ? `<img src="${f.preview}" alt="已選擇的照片預覽">` : `<div style="width:120px;height:120px;border-radius:12px;background:var(--rice);display:grid;place-items:center;color:var(--ink-soft);font-size:.8rem;flex:none">無法預覽<br>（仍會上傳）</div>`}
       <div class="meta">
         <span class="ok">✔ 已選擇</span>
         <b>${esc(f.name)}</b>
@@ -485,7 +479,8 @@ const storyLength = () => Array.from($("#story").value.trim()).length;
 
 function missing() {
   const m = [];
-  if (!state.record) m.push({ text: "人事號查詢", el: "#step1" });
+  if (state.blocked) m.push({ text: "此人事號已填寫過本梯次問卷", el: "#step1" });
+  else if (!state.record) m.push({ text: "人事號查詢", el: "#step1" });
   const unanswered = answers().map((v, i) => v ? 0 : i + 1).filter(Boolean);
   if (unanswered.length) m.push({ text: `第 ${unanswered.join("、")} 題`, el: "#qbox" + unanswered[0] });
   if (!state.photo) m.push({ text: "活動照", el: "#photoUpload" });
@@ -504,7 +499,10 @@ function updateProgress() {
   const total = 1 + QUESTION_COUNT * 0.5 + 1 + 1;
   $("#progressBar").style.width = Math.round(done / total * 100) + "%";
   const m = missing();
-  $("#todo").innerHTML = m.length ? `尚未完成：<b>${m.map(x => esc(x.text)).join("、")}</b>` : "✔ 全部完成，可以送出了！";
+  $("#todo").innerHTML = state.blocked
+    ? `<b>您已填寫過${esc(SESSION)}問卷（編號 ${esc(state.blocked)}），每人限填寫一次。</b>`
+    : m.length ? `尚未完成：<b>${m.map(x => esc(x.text)).join("、")}</b>` : "✔ 全部完成，可以送出了！";
+  if (!state.submitting) $("#submitBtn").disabled = state.done || !!state.blocked;
 }
 
 function markInvalid() {
@@ -563,6 +561,11 @@ async function onSubmit(e) {
   btn.textContent = "檢查中…";
   try {
     if (normalizeId($("#empId").value) && (!state.record || state.lookedUp !== normalizeId($("#empId").value))) await lookup(true);
+    if (state.blocked) {
+      showMsg(`您已填寫過${SESSION}問卷（編號 ${state.blocked}），每人限填寫一次；如需修改請洽教學部（分機 57440）。`);
+      $("#step1").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     const m = missing();
     if (m.length) {
       markInvalid();
@@ -583,11 +586,12 @@ async function onSubmit(e) {
       photo: { type: state.photo.type, ext: state.photo.ext, data: await blobToBase64(state.photo.blob) },
       social: state.social ? { type: state.social.type, ext: state.social.ext, data: await blobToBase64(state.social.blob) } : null
     };
-    overlay(true, "送出中…", "正在上傳照片與問卷，約需 10–30 秒，請勿關閉頁面。");
+    overlay(true, "送出中…", "正在上傳照片原檔與問卷，依網路速度約需 10 秒～2 分鐘，請勿關閉頁面。");
     const res = await sendSurvey(payload);
     if (res && res.ok && res.submitted) {
       showDone(res, !!payload.social);
     } else {
+      if (res && res.error === "duplicate") { state.blocked = res.no || "?"; renderProfile(); }
       showMsg((res && res.message) || "送出失敗，請稍後再試，或洽教學部（分機 57440）。");
       $("#submitCard").scrollIntoView({ behavior: "smooth", block: "center" });
     }
@@ -596,8 +600,8 @@ async function onSubmit(e) {
   } finally {
     state.submitting = false;
     overlay(false);
-    btn.disabled = state.done;
     btn.textContent = "送出問卷";
+    updateProgress();
   }
 }
 
@@ -637,7 +641,7 @@ function init() {
   emp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); lookup(true); } });
   emp.addEventListener("blur", () => { if (normalizeId(emp.value) && normalizeId(emp.value) !== state.lookedUp) lookup(false); });
   emp.addEventListener("input", () => {
-    if (normalizeId(emp.value) !== state.lookedUp) { state.record = null; hideProfile(); }
+    if (normalizeId(emp.value) !== state.lookedUp) { state.record = null; state.blocked = null; hideProfile(); }
     updateProgress(); saveDraft();
   });
 

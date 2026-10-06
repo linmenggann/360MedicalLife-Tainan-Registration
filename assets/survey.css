@@ -137,7 +137,6 @@ main{padding-bottom:3rem}
 .profile dt{font-size:.76rem;color:var(--ink-soft)}
 .profile dd{margin:0;font-weight:700;overflow-wrap:anywhere}
 .profile .note{font-size:.8rem;color:var(--ink-soft);margin-top:.6rem}
-.profile .again{margin-top:.6rem;font-size:.85rem;color:#6b4b0e;background:#fff6e5;border-radius:10px;padding:.5rem .7rem}
 .profile a{color:var(--brick);font-weight:700}
 @media (max-width:560px){.profile dl{grid-template-columns:repeat(2,1fr)}}
 

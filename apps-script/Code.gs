@@ -1301,7 +1301,8 @@ function publishStats() {
  *      c. 鎖定 → 決定「編號」（該分頁現有最大編號 + 1，從 1 開始）→ 檔案改名為「編號-姓名.副檔名」→ 寫入一列 → 解鎖。
  *   3. 每次送出帶一組送出代碼：Google 把 POST 轉成 GET、或網路中斷後網頁重送時，
  *      同一組代碼不會重複寫入，直接回覆原本的編號。
- *   同一人可以填寫多次（每次一個新編號），不以人事號擋下。
+ *   每人每梯次限填寫一次（使用者 2026-10-06 要求）：同一梯次分頁已有此人事號就不再寫入。
+ *   （管理者加報而參加兩個梯次的人，兩個梯次的問卷各可填一次。）
  */
 const SURVEY_SHEETS = {
   '第一梯次': '第一梯次活動滿意度調查',
@@ -1434,6 +1435,14 @@ function surveyLookup_(session, empId) {
   return { ok: true, found: true, record: surveyRecord_(found.record), submittedBefore: before };
 }
 
+/** 此人事號已填寫過本梯次問卷 */
+function surveyDuplicate_(session, prior) {
+  return {
+    ok: false, error: 'duplicate', no: prior.no,
+    message: '您已填寫過' + session + '問卷（編號 ' + prior.no + '），每人限填寫一次；如需修改請洽教學部（分機 57440）。'
+  };
+}
+
 /** GET ?action=surveyStatus&session=…&id=…：此送出代碼是否已寫入（網頁重送前確認用） */
 function surveyStatus_(session, id) {
   session = String(session || '').trim();
@@ -1497,8 +1506,11 @@ function submitSurvey_(d) {
   const reg = found.record;
 
   const sheet = surveySheet_(session);
-  const done = surveyEntries_(sheet).find(x => x.id === submissionId);
+  const entries0 = surveyEntries_(sheet);
+  const done = entries0.find(x => x.id === submissionId);
   if (done) return { ok: true, submitted: true, no: done.no, name: reg.name, social: false, repeated: true };
+  const prior = entries0.find(x => x.empId === reg.empId);
+  if (prior) return surveyDuplicate_(session, prior);
 
   const folders = SURVEY_FOLDERS[session];
   const saved = [];
@@ -1525,6 +1537,12 @@ function submitSurvey_(d) {
       if (again) {
         saved.forEach(f => { try { f.setTrashed(true); } catch (e) {} });
         return { ok: true, submitted: true, no: again.no, name: reg.name, social: false, repeated: true };
+      }
+      // 同一人幾乎同時送出兩份（例如兩支手機）：鎖定內再檢查一次
+      const priorNow = entries.find(x => x.empId === reg.empId);
+      if (priorNow) {
+        saved.forEach(f => { try { f.setTrashed(true); } catch (e) {} });
+        return surveyDuplicate_(session, priorNow);
       }
       no = entries.reduce((m, x) => Math.max(m, x.no), 0) + 1;
       const base = no + '-' + safeFileName_(reg.name);
