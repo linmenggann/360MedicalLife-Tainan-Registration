@@ -5,6 +5,7 @@
  * 分頁：
  *   - 活動報名資料（總表）：所有報名資料
  *   - 第一梯次／第二梯次／第三梯次：各梯次的報名資料（同時寫入）
+ *   - 第一梯次活動滿意度調查／第二梯次…／第三梯次…：活動滿意度調查（survey-1/2/3.html），見檔案最後一節
  *
  * 部署步驟：
  * 1. 開啟上述試算表 → 擴充功能 → Apps Script，刪除預設內容後貼上本檔。
@@ -191,6 +192,8 @@ function onOpen() {
     .addSeparator()
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
     .addSeparator()
+    .addItem('建立活動滿意度調查分頁＋檢查雲端硬碟資料夾', 'setupSurvey')
+    .addSeparator()
     .addItem('驗收測試：人事號不被轉成科學記號', 'testTextColumns')
     .addItem('清除人事號等欄位的前置撇號', 'fixApostrophes')
     .addItem('診斷文字欄內容', 'diagnoseTextColumns')
@@ -352,6 +355,8 @@ function refreshCaches_(rows) {
 function doGet(e) {
   const p = (e && e.parameter) || {};
   if (p.action === 'dashboard') return dashboardResponse_(p.key);
+  if (p.action === 'surveyLookup') return json_(surveyLookup_(p.session, p.empId));
+  if (p.action === 'surveyStatus') return json_(surveyStatus_(p.session, p.id));
   const cached = cacheGet_('counts');
   if (cached) { cached.cached = true; return json_(cached); }
   return json_(refreshCaches_().counts);
@@ -378,6 +383,9 @@ function doPost(e) {
 
   // 儀表板資料（不需鎖定；保留 POST 以相容舊版儀表板）
   if (d.action === 'dashboard') return dashboardResponse_(d.key);
+
+  // 活動滿意度調查（檔案先存雲端硬碟，只有決定編號、寫入一列時才鎖定）
+  if (d.action === 'survey') return json_(submitSurvey_(d));
 
   // 報名寫入（需鎖定避免同時報名超額）
   const lock = LockService.getScriptLock();
@@ -534,12 +542,25 @@ function asSheetText_(v, header) {
  * 純文字格式下，Google 試算表不會對寫入的字串做任何型別判讀，值也不會多出撇號。
  */
 function appendRow_(sheet, row) {
-  const r = sheet.getLastRow() + 1;
-  const out = row.slice(0, HEADERS.length);
-  while (out.length < HEADERS.length) out.push('');
-  TEXT_COLS.forEach(h => { out[COL[h] - 1] = asSheetText_(out[COL[h] - 1], h); });
-  TEXT_COLS.forEach(h => sheet.getRange(r, COL[h]).setNumberFormat('@'));
-  sheet.getRange(r, COL['報名時間']).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+  return writeRowAt_(sheet, sheet.getLastRow() + 1, row, HEADERS, TEXT_COLS, '報名時間');
+}
+
+/**
+ * 所有含文字欄的寫入共用這個函式（報名分頁、活動滿意度調查分頁）；回傳列號。
+ * headers：該分頁的表頭；textCols：以純文字儲存的欄位（先設 @ 再寫入，不加撇號）；timeCol：時間欄。
+ * 呼叫端以 getLastRow() + 1 決定列號時，必須在 LockService 鎖定範圍內呼叫。
+ */
+function writeRowAt_(sheet, r, row, headers, textCols, timeCol) {
+  const out = row.slice(0, headers.length);
+  while (out.length < headers.length) out.push('');
+  textCols.forEach(h => {
+    const c = headers.indexOf(h);
+    if (c === -1) return;
+    out[c] = asSheetText_(out[c], h);
+    sheet.getRange(r, c + 1).setNumberFormat('@');
+  });
+  const t = timeCol ? headers.indexOf(timeCol) : -1;
+  if (t !== -1) sheet.getRange(r, t + 1).setNumberFormat('yyyy/MM/dd HH:mm:ss');
   sheet.getRange(r, 1, 1, out.length).setValues([out]);
   return r;
 }
@@ -1266,4 +1287,295 @@ function publishStats() {
 
   sheet.clearContents();
   sheet.getRange(1, 1, out.length, 5).setValues(out);
+}
+
+/* ------------------------------------------------------------------ */
+/* 活動滿意度調查（survey-1.html／survey-2.html／survey-3.html）        */
+/* ------------------------------------------------------------------ */
+/*
+ * 流程：
+ *   1. 網頁輸入人事號 → GET ?action=surveyLookup 由總表帶出梯次、身分、單位、姓名、職稱。
+ *   2. 送出 → POST action=survey：
+ *      a. 以人事號重新查總表（不採信網頁送來的姓名等資料）。
+ *      b. 先把活動照（必填）與社群媒體截圖（選填）存進該梯次的雲端硬碟資料夾（暫時檔名）。
+ *      c. 鎖定 → 決定「編號」（該分頁現有最大編號 + 1，從 1 開始）→ 檔案改名為「編號-姓名.副檔名」→ 寫入一列 → 解鎖。
+ *   3. 每次送出帶一組送出代碼：Google 把 POST 轉成 GET、或網路中斷後網頁重送時，
+ *      同一組代碼不會重複寫入，直接回覆原本的編號。
+ *   同一人可以填寫多次（每次一個新編號），不以人事號擋下。
+ */
+const SURVEY_SHEETS = {
+  '第一梯次': '第一梯次活動滿意度調查',
+  '第二梯次': '第二梯次活動滿意度調查',
+  '第三梯次': '第三梯次活動滿意度調查'
+};
+// 雲端硬碟資料夾 ID：photo＝活動照、social＝社群媒體截圖
+const SURVEY_FOLDERS = {
+  '第一梯次': { photo: '1G1GoZ-_st3ScsuhskrUet2ef-ANVz4Ty', social: '16ASsU_J_i3KH_UsULzJLxC0lPFZ9rbtw' },
+  '第二梯次': { photo: '1aC8l40vsFAe4vrnueEqMl2aXxqn-7lP3', social: '1Kww_-QJIifSE5aMXjnx3GyJOC1yof1s6' },
+  '第三梯次': { photo: '1WkAgXSNxdHmQo6XMEpFBk7msDMiLTQN2', social: '1XTnAUDv8Dl2qJpNeZ603N-4rDH3IXs1O' }
+};
+// 10 題的表頭（順序與 assets/survey.js 的 QUESTIONS 相同；完整題目見該檔）
+const SURVEY_QUESTIONS = [
+  'Q1 飲食文化｜認識臺南飲食文化與生活',
+  'Q2 飲食文化｜理解飲食與健康的關聯',
+  'Q3 飲食文化｜照護時留意病人飲食習慣',
+  'Q4 社區照護｜了解病人在醫院外的生活',
+  'Q5 社區照護｜家庭與社區資源的重要性',
+  'Q6 社區照護｜跨職類交流與合作',
+  'Q7 自我覺察｜覺察自己的情緒與身心',
+  'Q8 自我覺察｜反思專業價值與初衷',
+  'Q9 自我覺察｜把體會帶回日常工作',
+  'Q10 整體滿意度'
+];
+const SURVEY_HEADERS = ['編號', '填寫時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱']
+  .concat(SURVEY_QUESTIONS)
+  .concat(['最感動的一段話', '活動照', '社群媒體截圖', '送出代碼']);
+const SURVEY_TEXT_COLS = ['人事號', '單位', '姓名', '職稱', '最感動的一段話'];
+const SURVEY_STORY_MIN = 20;                 // 最感動的一段話至少字數（與 survey.js 相同）
+const SURVEY_STORY_MAX = 1000;
+const SURVEY_MAX_FILE_BYTES = 15 * 1024 * 1024;
+const SURVEY_IMAGE_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heif' };
+
+/** 取得（必要時建立）某梯次的活動滿意度調查分頁 */
+function surveySheet_(session) {
+  const name = SURVEY_SHEETS[session];
+  const sheet = ss_().getSheetByName(name);
+  return sheet || ensureSurveySheet_(session);
+}
+
+/** 建立／校正活動滿意度調查分頁：補齊缺少的表頭（不清除、不搬動既有資料），設定格式 */
+function ensureSurveySheet_(session) {
+  const ss = ss_();
+  const name = SURVEY_SHEETS[session];
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  const headers = surveyHeaders_(sheet);
+  sheet.getRange(1, 1, 1, headers.length)
+    .setFontWeight('bold').setBackground('#3e7c59').setFontColor('#ffffff')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sheet.setFrozenRows(1);
+  sheet.setRowHeight(1, 32);
+  const widths = { '編號': 60, '填寫時間': 150, '梯次': 80, '身分': 140, '單位': 130, '姓名': 90, '人事號': 90, '職稱': 110,
+    '最感動的一段話': 360, '活動照': 150, '社群媒體截圖': 150, '送出代碼': 120 };
+  headers.forEach((h, i) => sheet.setColumnWidth(i + 1, widths[h] || 120));
+  const rows = sheet.getMaxRows() - 1;
+  if (rows > 0) {
+    SURVEY_TEXT_COLS.forEach(h => sheet.getRange(2, headers.indexOf(h) + 1, rows, 1).setNumberFormat('@'));
+    sheet.getRange(2, headers.indexOf('填寫時間') + 1, rows, 1).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+  }
+  return sheet;
+}
+
+/** 讀取表頭；缺少的欄位補在最後（承辦人調整過欄位順序也能依表頭名稱寫入） */
+function surveyHeaders_(sheet) {
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  while (headers.length && headers[headers.length - 1] === '') headers.pop();
+  const missing = SURVEY_HEADERS.filter(h => headers.indexOf(h) === -1);
+  if (missing.length) {
+    sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
+    missing.forEach(h => headers.push(h));
+  }
+  return headers;
+}
+
+/** 由總表找此人事號在指定梯次的報名資料；找不到時回傳他實際報名的梯次 */
+function findRegistration_(session, empId, rows) {
+  const id = normalizeId(empId);
+  const mine = rows.filter(r => normalizeId(r.empId) === id);
+  const record = mine.find(r => r.session === session) || null;
+  const otherSessions = mine.map(r => r.session).filter((s, i, a) => s !== session && a.indexOf(s) === i);
+  return { record: record, otherSessions: otherSessions };
+}
+
+/** 總表資料（同儀表板名單格式）；優先用快取，沒有快取才讀試算表 */
+function registrationList_(fresh) {
+  if (!fresh) {
+    const cached = cacheGet_('dashboard');
+    if (cached && Array.isArray(cached.registrations)) return cached.registrations;
+  }
+  return registrationsFromRows_(readMaster_(getSheet_(MASTER_SHEET)));
+}
+
+/** 此分頁已有的填寫紀錄：[{ no, empId, id, row }] */
+function surveyEntries_(sheet) {
+  const last = sheet.getLastRow();
+  if (last < 2) return [];
+  const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0].map(h => String(h).trim());
+  const cNo = headers.indexOf('編號'), cEmp = headers.indexOf('人事號'), cId = headers.indexOf('送出代碼');
+  return sheet.getRange(2, 1, last - 1, headers.length).getValues().map((r, i) => ({
+    no: cNo === -1 ? 0 : Number(r[cNo]) || 0,
+    empId: cEmp === -1 ? '' : normalizeId(r[cEmp]),
+    id: cId === -1 ? '' : String(r[cId]).trim(),
+    row: i + 2
+  }));
+}
+
+const surveyRecord_ = r => ({ session: r.session, identity: canonIdentity_(r.identity), unit: r.unit, name: r.name, empId: r.empId, title: r.title });
+
+/** GET ?action=surveyLookup&session=…&empId=… */
+function surveyLookup_(session, empId) {
+  session = String(session || '').trim();
+  if (!SURVEY_SHEETS[session]) return { ok: false, error: 'invalid', message: '梯次不正確' };
+  const id = normalizeId(empId);
+  if (!id) return { ok: false, error: 'invalid', message: '請填寫人事號' };
+  let found = findRegistration_(session, id, registrationList_(false));
+  if (!found.record) found = findRegistration_(session, id, registrationList_(true));   // 快取可能還沒更新
+  if (!found.record) {
+    return {
+      ok: false, error: 'notfound', otherSessions: found.otherSessions,
+      message: found.otherSessions.length
+        ? '您報名的是' + found.otherSessions.join('、') + '，請填寫該梯次的問卷。'
+        : '查無此人事號的' + session + '報名資料，請確認人事號，或洽教學部（分機 57440）。'
+    };
+  }
+  const sheet = ss_().getSheetByName(SURVEY_SHEETS[session]);
+  const before = sheet ? surveyEntries_(sheet).filter(x => x.empId === id).map(x => x.no) : [];
+  return { ok: true, found: true, record: surveyRecord_(found.record), submittedBefore: before };
+}
+
+/** GET ?action=surveyStatus&session=…&id=…：此送出代碼是否已寫入（網頁重送前確認用） */
+function surveyStatus_(session, id) {
+  session = String(session || '').trim();
+  id = String(id || '').trim();
+  if (!SURVEY_SHEETS[session] || !id) return { ok: false, error: 'invalid' };
+  const sheet = ss_().getSheetByName(SURVEY_SHEETS[session]);
+  const hit = sheet ? surveyEntries_(sheet).find(x => x.id === id) : null;
+  return hit ? { ok: true, found: true, no: hit.no } : { ok: true, found: false };
+}
+
+/** 檔名只用「編號-姓名」：去掉雲端硬碟與作業系統不允許的字元 */
+function safeFileName_(s) {
+  const v = String(s || '').replace(/[\\/:*?"<>|\u0000-\u001F]/g, '').replace(/\s+/g, ' ').trim();
+  return v || '未具名';
+}
+
+/** 把網頁送來的 { type, ext, data(base64) } 存進資料夾；回傳 { file, ext } */
+function saveSurveyFile_(f, folderId, tempName) {
+  const type = String(f.type || '').toLowerCase();
+  if (type && type.indexOf('image/') !== 0) throw new Error('只接受圖片檔');
+  let ext = SURVEY_IMAGE_EXT[type] || String(f.ext || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (ext === 'jpeg') ext = 'jpg';
+  if (!ext) ext = 'jpg';
+  const bytes = Utilities.base64Decode(String(f.data || ''));
+  if (!bytes.length) throw new Error('檔案是空的');
+  if (bytes.length > SURVEY_MAX_FILE_BYTES) throw new Error('檔案超過 15 MB');
+  const blob = Utilities.newBlob(bytes, type || 'image/jpeg', tempName + '.' + ext);
+  const file = DriveApp.getFolderById(folderId).createFile(blob);
+  return { file: file, ext: ext };
+}
+
+/** POST action=survey */
+function submitSurvey_(d) {
+  const session = String(d.session || '').trim();
+  if (!SURVEY_SHEETS[session]) return { ok: false, error: 'invalid', message: '梯次不正確' };
+  const submissionId = String(d.submissionId || '').trim();
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(submissionId)) return { ok: false, error: 'invalid', message: '送出代碼不正確，請重新整理頁面後再送出。' };
+  const empId = normalizeId(d.empId);
+  if (!empId) return { ok: false, error: 'invalid', message: '請填寫人事號' };
+  const answers = Array.isArray(d.answers) ? d.answers.map(Number) : [];
+  if (answers.length !== SURVEY_QUESTIONS.length || answers.some(a => !(a >= 1 && a <= 5 && Math.floor(a) === a))) {
+    return { ok: false, error: 'invalid', message: '請完成全部 ' + SURVEY_QUESTIONS.length + ' 題（每題 1～5 分）。' };
+  }
+  const story = txt_(d.story);
+  if (story.length < SURVEY_STORY_MIN) return { ok: false, error: 'invalid', message: '最感動的一段話請至少寫 ' + SURVEY_STORY_MIN + ' 個字。' };
+  if (story.length > SURVEY_STORY_MAX) return { ok: false, error: 'invalid', message: '最感動的一段話請在 ' + SURVEY_STORY_MAX + ' 字以內。' };
+  if (!d.photo || !d.photo.data) return { ok: false, error: 'invalid', message: '請上傳活動照。' };
+  const notImage = f => f && f.data && f.type && String(f.type).toLowerCase().indexOf('image/') !== 0;
+  if (notImage(d.photo) || notImage(d.social)) return { ok: false, error: 'invalid', message: '只能上傳圖片檔（JPG、PNG、HEIC 等）。' };
+
+  // 以人事號重新查總表（不採信網頁送來的姓名、單位等）
+  const found = findRegistration_(session, empId, registrationList_(true));
+  if (!found.record) {
+    return {
+      ok: false, error: 'notfound', otherSessions: found.otherSessions,
+      message: found.otherSessions.length
+        ? '您報名的是' + found.otherSessions.join('、') + '，請填寫該梯次的問卷。'
+        : '查無此人事號的' + session + '報名資料，請確認人事號，或洽教學部（分機 57440）。'
+    };
+  }
+  const reg = found.record;
+
+  const sheet = surveySheet_(session);
+  const done = surveyEntries_(sheet).find(x => x.id === submissionId);
+  if (done) return { ok: true, submitted: true, no: done.no, name: reg.name, social: false, repeated: true };
+
+  const folders = SURVEY_FOLDERS[session];
+  const saved = [];
+  try {
+    // 1) 存檔（較久，不佔用鎖定）
+    const photo = saveSurveyFile_(d.photo, folders.photo, '上傳中-' + submissionId + '-活動照');
+    saved.push(photo.file);
+    let social = null;
+    if (d.social && d.social.data) {
+      social = saveSurveyFile_(d.social, folders.social, '上傳中-' + submissionId + '-社群媒體截圖');
+      saved.push(social.file);
+    }
+
+    // 2) 鎖定：決定編號 → 檔案改名 → 寫入一列
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) {
+      saved.forEach(f => { try { f.setTrashed(true); } catch (e) {} });
+      return { ok: false, error: 'busy', message: '目前填寫人數較多，系統忙碌中，請稍候再送出一次。' };
+    }
+    let no;
+    try {
+      const entries = surveyEntries_(sheet);
+      const again = entries.find(x => x.id === submissionId);
+      if (again) {
+        saved.forEach(f => { try { f.setTrashed(true); } catch (e) {} });
+        return { ok: true, submitted: true, no: again.no, name: reg.name, social: false, repeated: true };
+      }
+      no = entries.reduce((m, x) => Math.max(m, x.no), 0) + 1;
+      const base = no + '-' + safeFileName_(reg.name);
+      const photoName = base + '.' + photo.ext;
+      photo.file.setName(photoName);
+      const socialName = social ? base + '.' + social.ext : '';
+      if (social) social.file.setName(socialName);
+
+      const headers = surveyHeaders_(sheet);
+      const values = {
+        '編號': no, '填寫時間': new Date(), '梯次': session, '身分': reg.identity, '單位': reg.unit,
+        '姓名': reg.name, '人事號': reg.empId, '職稱': reg.title,
+        '最感動的一段話': '', '活動照': '', '社群媒體截圖': '', '送出代碼': submissionId
+      };
+      SURVEY_QUESTIONS.forEach((q, i) => { values[q] = answers[i]; });
+      const r = sheet.getLastRow() + 1;
+      writeRowAt_(sheet, r, headers.map(h => values[h] === undefined ? '' : values[h]), headers, SURVEY_TEXT_COLS, '填寫時間');
+      // 文字與連結以 RichText 寫入：內容不會被當成公式（例如以「=」開頭），連結欄顯示檔名、點了開啟檔案
+      const rich = (text, url) => {
+        const b = SpreadsheetApp.newRichTextValue().setText(text);
+        return (url ? b.setLinkUrl(url) : b).build();
+      };
+      sheet.getRange(r, headers.indexOf('最感動的一段話') + 1).setRichTextValue(rich(story));
+      sheet.getRange(r, headers.indexOf('活動照') + 1).setRichTextValue(rich(photoName, photo.file.getUrl()));
+      if (social) sheet.getRange(r, headers.indexOf('社群媒體截圖') + 1).setRichTextValue(rich(socialName, social.file.getUrl()));
+      SpreadsheetApp.flush();
+    } finally {
+      lock.releaseLock();
+    }
+    return { ok: true, submitted: true, no: no, name: reg.name, social: !!social };
+  } catch (err) {
+    saved.forEach(f => { try { f.setTrashed(true); } catch (e) {} });
+    return { ok: false, error: 'server', message: '送出失敗，請稍後再試一次（' + (err && err.message ? err.message : err) + '）。' };
+  }
+}
+
+/** 選單：建立三個活動滿意度調查分頁，並檢查六個雲端硬碟資料夾能否存取 */
+function setupSurvey() {
+  const lines = [];
+  SESSIONS.forEach(s => {
+    ensureSurveySheet_(s);
+    lines.push('✔ 分頁「' + SURVEY_SHEETS[s] + '」');
+    [['photo', '活動照'], ['social', '社群媒體截圖']].forEach(([k, label]) => {
+      try {
+        const folder = DriveApp.getFolderById(SURVEY_FOLDERS[s][k]);
+        lines.push('　✔ ' + s + label + '資料夾：' + folder.getName());
+      } catch (err) {
+        lines.push('　✘ ' + s + label + '資料夾無法存取（' + SURVEY_FOLDERS[s][k] + '）：請確認執行 Apps Script 的帳號有此資料夾的編輯權限');
+      }
+    });
+  });
+  SpreadsheetApp.flush();
+  SpreadsheetApp.getUi().alert('活動滿意度調查設定\n\n' + lines.join('\n'));
 }

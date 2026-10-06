@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第一梯次活動滿意度調查｜360°醫學人生｜走進臺南，走進生活</title>
+<meta name="description" content="奇美醫院教學部「360°醫學人生｜走進臺南，走進生活」第一梯次（115/10/17–10/18）活動滿意度調查。">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cline x1='32' y1='2' x2='32' y2='12' stroke='%235b2418' stroke-width='3'/%3E%3Cellipse cx='32' cy='32' rx='20' ry='22' fill='%23e4572e'/%3E%3Crect x='20' y='8' width='24' height='6' rx='2' fill='%23d9a441'/%3E%3Crect x='20' y='50' width='24' height='6' rx='2' fill='%23d9a441'/%3E%3Cline x1='32' y1='56' x2='32' y2='63' stroke='%23d9a441' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/survey.css?v=1">
+</head>
+<body data-session="第一梯次">
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="回活動網頁">
+      <span class="brand-mark">360°</span>
+      <span class="brand-text"><small>奇美醫院教學部</small><strong>醫學人生｜活動滿意度調查</strong></span>
+    </a>
+    <a class="btn btn-outline" href="index.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg><span>活動網頁</span></a>
+  </div>
+  <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
+</header>
+
+<main id="app">
+  <noscript><p style="text-align:center;padding:3rem 1rem">請開啟瀏覽器的 JavaScript 功能以填寫問卷。</p></noscript>
+</main>
+
+<!-- 送出中 -->
+<div class="overlay" id="overlay" role="alertdialog" aria-modal="true" aria-labelledby="overlayTitle">
+  <div class="overlay-card">
+    <div class="spinner" aria-hidden="true"></div>
+    <b id="overlayTitle">送出中…</b>
+    <p id="overlayText"></p>
+  </div>
+</div>
+
+<!-- 完成 -->
+<div class="modal" id="doneModal" role="dialog" aria-modal="true" aria-labelledby="doneTitle">
+  <div class="modal-card">
+    <div class="seal">感謝</div>
+    <h3 id="doneTitle">問卷已送出！</h3>
+    <p>謝謝您寶貴的回饋與分享。</p>
+    <div class="summary" id="doneSummary"></div>
+    <p class="gift-note" id="doneGift">🎁 您已上傳社群媒體截圖，可獲得精美小禮物一份！</p>
+    <button class="btn btn-primary" id="doneOk" type="button">完成</button>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="container">
+    <p>奇美醫院教學部｜聯絡窗口：林盟淦 教學行政管理員</p>
+    <p>06-281-2811 分機 57440｜<a href="mailto:910632@chimei.org.tw">910632@chimei.org.tw</a></p>
+  </div>
+</footer>
+
+<script src="assets/survey.js?v=1"></script>
+</body>
+</html>
