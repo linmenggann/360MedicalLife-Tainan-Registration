@@ -9,7 +9,12 @@
 
 const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
-  LOOKUP_TIMEOUT_MS: 25000,
+  // 讀取（GET）：Apps Script 回應時間很不穩定（2026-10-07 實測同一個請求 1～60 秒不等），
+  // 所以第一個請求 6 秒沒回應就再送一個（最多同時 3 個、共 4 個），採用最先成功的回應；60 秒都沒有才算失敗
+  GET_HEDGE_MS: 6000,
+  GET_PARALLEL: 3,
+  GET_ATTEMPTS: 4,
+  GET_TOTAL_MS: 60000,
   SUBMIT_TIMEOUT_MS: 60000,      // 送出問卷（照片已上傳，只帶檔案 ID）
   STORY_MIN: 20,                 // 與 Code.gs 的 SURVEY_STORY_MIN 相同
   STORY_MAX: 1000,
@@ -123,10 +128,52 @@ function fetchWithTimeout(url, opts, ms) {
   const timer = setTimeout(() => ctrl.abort(), ms);
   return fetch(url, Object.assign({ signal: ctrl.signal, cache: "no-store" }, opts || {})).finally(() => clearTimeout(timer));
 }
-async function getJson(params) {
-  const q = new URLSearchParams(Object.assign({}, params, { t: Date.now() }));
-  const res = await fetchWithTimeout(CONFIG.API_URL + "?" + q.toString(), {}, CONFIG.LOOKUP_TIMEOUT_MS);
-  return res.json();
+/**
+ * GET（只用於可重複的讀取）：並行備援請求。第一個請求超過 GET_HEDGE_MS 沒回應（或失敗）就再送一個，
+ * 採用最先成功解析成 JSON 的回應，其餘請求取消。onSlow：第一次送出備援請求時呼叫（顯示「回應較慢」）。
+ */
+function getJson(params, opts) {
+  const o = opts || {};
+  const url = () => CONFIG.API_URL + "?" + new URLSearchParams(Object.assign({}, params, { t: Date.now() + "" + Math.floor(Math.random() * 1000) })).toString();
+  return new Promise((resolve, reject) => {
+    const ctrls = [];
+    let started = 0, running = 0, done = false, slowShown = false, lastErr = null, hedgeTimer = null;
+    const finish = (ok, v) => {
+      if (done) return;
+      done = true;
+      clearTimeout(hedgeTimer); clearTimeout(totalTimer);
+      ctrls.forEach(c => { try { c.abort(); } catch (e) {} });
+      ok ? resolve(v) : reject(v);
+    };
+    const launch = () => {
+      if (done || started >= CONFIG.GET_ATTEMPTS || running >= CONFIG.GET_PARALLEL) return;
+      if (started > 0 && !slowShown) { slowShown = true; if (o.onSlow) o.onSlow(); }
+      started++; running++;
+      const c = new AbortController();
+      ctrls.push(c);
+      fetch(url(), { signal: c.signal, cache: "no-store" })
+        .then(r => r.json())                       // Google 偶爾回 404／錯誤頁（HTML），解析失敗就當作這個請求失敗
+        .then(j => finish(true, j))
+        .catch(e => {
+          running--; lastErr = e;
+          if (done) return;
+          if (started < CONFIG.GET_ATTEMPTS) launch();
+          else if (running === 0) finish(false, lastErr || new Error("network"));
+        });
+    };
+    const hedge = () => {
+      if (done) return;
+      launch();
+      if (started < CONFIG.GET_ATTEMPTS) hedgeTimer = setTimeout(hedge, CONFIG.GET_HEDGE_MS);
+    };
+    const totalTimer = setTimeout(() => finish(false, new Error("timeout")), CONFIG.GET_TOTAL_MS);
+    if (o.signal) {
+      if (o.signal.aborted) return finish(false, new DOMException("aborted", "AbortError"));
+      o.signal.addEventListener("abort", () => finish(false, new DOMException("aborted", "AbortError")));
+    }
+    launch();
+    hedgeTimer = setTimeout(hedge, CONFIG.GET_HEDGE_MS);
+  });
 }
 async function postJson(body, ms) {
   // text/plain 避免 CORS preflight（Apps Script 不處理 OPTIONS）
@@ -303,6 +350,8 @@ const state = {
   record: null,            // 查詢到的報名資料
   lookedUp: "",            // 已查詢的人事號（正規化後）
   lookupSeq: 0,
+  lookupInflight: null,    // 查詢中的 { id, promise }
+  lookupAbort: null,       // 取消查詢中的請求（使用者改了人事號時）
   photo: null,             // { blob（原檔 File）, name, preview, w, h }
   social: null,
   blocked: null,           // 此人事號已填寫過本梯次問卷時的編號（每人限填一次）
@@ -342,7 +391,19 @@ function showProfile(kind, html) {
 }
 function hideProfile() { const p = $("#profile"); p.className = "profile"; p.innerHTML = ""; }
 
-async function lookup(force) {
+function lookup(force) {
+  const id = normalizeId($("#empId").value);
+  const f = state.lookupInflight;
+  if (id && f && f.id === id) return f.promise;
+  const p = doLookup(force);
+  if (id) {
+    state.lookupInflight = { id, promise: p };
+    p.finally(() => { if (state.lookupInflight && state.lookupInflight.promise === p) state.lookupInflight = null; });
+  }
+  return p;
+}
+
+async function doLookup(force) {
   const input = $("#empId");
   const id = normalizeId(input.value);
   input.value = id;
@@ -350,11 +411,16 @@ async function lookup(force) {
   if (!id) { state.record = null; state.blocked = null; state.lookedUp = ""; hideProfile(); updateProgress(); return false; }
   if (!force && state.lookedUp === id && state.record) return true;
   const seq = ++state.lookupSeq;
+  if (state.lookupAbort) state.lookupAbort.abort();
+  const ctrl = state.lookupAbort = new AbortController();
   state.record = null; state.blocked = null; state.lookedUp = id;
   showProfile("loading", "查詢報名資料中…");
   $("#lookupBtn").disabled = true;
   try {
-    const res = await getJson({ action: "surveyLookup", session: SESSION, empId: id });
+    const res = await getJson({ action: "surveyLookup", session: SESSION, empId: id }, {
+      signal: ctrl.signal,
+      onSlow: () => { if (seq === state.lookupSeq) showProfile("loading", "系統回應較慢，仍在查詢中，請稍候…（不需要重新按「查詢」）"); }
+    });
     if (seq !== state.lookupSeq) return false;
     if (res && res.ok && res.found && res.record) {
       state.record = res.record;
@@ -373,7 +439,7 @@ async function lookup(force) {
   } catch (err) {
     if (seq !== state.lookupSeq) return false;
     state.lookedUp = "";
-    showProfile("error", "網路連線失敗，請按「查詢」再試一次。");
+    showProfile("error", "目前系統連線較慢，查詢未完成。請稍後再按一次「查詢」；也可以先填寫下方問卷，送出時會自動再查詢。");
   } finally {
     if (seq === state.lookupSeq) $("#lookupBtn").disabled = false;
     updateProgress();
@@ -840,6 +906,8 @@ function closeDone() {
 function init() {
   if (!SESS) { document.getElementById("app").textContent = "頁面設定錯誤：找不到梯次。"; return; }
   render();
+  // 預熱：先喚醒 Apps Script，使用者輸入完人事號時，查詢比較不會碰到冷啟動
+  fetch(CONFIG.API_URL + "?t=" + Date.now(), { cache: "no-store" }).catch(() => {});
   setupUpload("photo", "#photoUpload", "#photoInput");
   setupUpload("social", "#socialUpload", "#socialInput");
 
@@ -848,7 +916,13 @@ function init() {
   emp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); lookup(true); } });
   emp.addEventListener("blur", () => { if (normalizeId(emp.value) && normalizeId(emp.value) !== state.lookedUp) lookup(false); });
   emp.addEventListener("input", () => {
-    if (normalizeId(emp.value) !== state.lookedUp) { state.record = null; state.blocked = null; hideProfile(); }
+    if (normalizeId(emp.value) !== state.lookedUp) {
+      state.record = null; state.blocked = null; hideProfile();
+      state.lookupSeq++;                                 // 舊查詢的結果作廢
+      if (state.lookupAbort) { state.lookupAbort.abort(); state.lookupAbort = null; }
+      state.lookupInflight = null;
+      $("#lookupBtn").disabled = false;
+    }
     updateProgress(); saveDraft();
   });
 
