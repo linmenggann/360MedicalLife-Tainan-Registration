@@ -15,6 +15,11 @@ const CONFIG = {
   GET_PARALLEL: 3,
   GET_ATTEMPTS: 4,
   GET_TOTAL_MS: 60000,
+  // 人事號查詢名單：公開統計試算表（與 index.html 的 STATS_SPREADSHEET_ID 相同）的「問卷查詢」分頁
+  STATS_SPREADSHEET_ID: "1YAOD-_eKqRTBhFlqNv6iankT-seh4IRktsSWMSSRHiE",
+  LOOKUP_SHEET: "問卷查詢",
+  ROSTER_TIMEOUT_MS: 15000,
+  ROSTER_MAX_AGE_MS: 60000,
   SUBMIT_TIMEOUT_MS: 60000,      // 送出問卷（照片已上傳，只帶檔案 ID）
   STORY_MIN: 20,                 // 與 Code.gs 的 SURVEY_STORY_MIN 相同
   STORY_MAX: 1000,
@@ -403,6 +408,123 @@ function lookup(force) {
   return p;
 }
 
+/* ---------- 人事號查詢名單：公開統計試算表「問卷查詢」分頁（GViz） ----------
+ * Apps Script 回應常常很慢或失敗，查詢改為先讀這份由後端每 5 分鐘（及每筆報名、每份問卷送出後）發布的名單，
+ * 在瀏覽器內比對；名單讀不到、或名單裡沒有此人事號時，才向 Apps Script 查詢／確認。
+ */
+let roster = null;            // { rows: [{ empId, session, identity, unit, name, title, no }], at }
+let rosterPromise = null;
+
+function parseCsv(text) {
+  const rows = [], row = []; let field = "", q = false;
+  text = text.replace(/^﻿/, "");
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; }
+      else field += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ",") { row.push(field); field = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); rows.push(row.splice(0)); field = "";
+    } else field += ch;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row.splice(0)); }
+  return rows.filter(r => r.some(v => v !== ""));
+}
+
+const gvizUrl = out => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(CONFIG.STATS_SPREADSHEET_ID)}/gviz/tq?tqx=${out}&headers=1&sheet=${encodeURIComponent(CONFIG.LOOKUP_SHEET)}&t=${Date.now()}`;
+
+function gvizJsonp() {
+  return new Promise((resolve, reject) => {
+    const cb = "gvizRoster_" + Date.now();
+    const s = document.createElement("script");
+    const timer = setTimeout(() => { cleanup(); reject(new Error("GViz 逾時")); }, CONFIG.ROSTER_TIMEOUT_MS);
+    function cleanup() { clearTimeout(timer); delete window[cb]; s.remove(); }
+    window[cb] = resp => {
+      cleanup();
+      if (!resp || resp.status === "error" || !resp.table) return reject(new Error("GViz 回應錯誤"));
+      const cell = x => (x == null || x.v == null) ? "" : (x.f != null ? String(x.f) : String(x.v));
+      resolve([resp.table.cols.map(c => c.label || "")].concat(resp.table.rows.map(r => (r.c || []).map(cell))));
+    };
+    s.onerror = () => { cleanup(); reject(new Error("GViz 載入失敗")); };
+    s.src = gvizUrl("out:json;responseHandler:" + cb);
+    document.head.appendChild(s);
+  });
+}
+
+async function fetchRoster() {
+  let table;
+  try {
+    const res = await fetchWithTimeout(gvizUrl("out:csv"), {}, CONFIG.ROSTER_TIMEOUT_MS);
+    if (!res.ok) throw new Error("GViz HTTP " + res.status);
+    table = parseCsv(await res.text());
+  } catch (e) {
+    table = await gvizJsonp();
+  }
+  const head = (table[0] || []).map(h => String(h).trim());
+  const col = h => head.indexOf(h);
+  // 分頁不存在時 GViz 可能回傳別的分頁：沒有這些欄位就當作讀取失敗
+  if (col("人事號") === -1 || col("梯次") === -1 || col("姓名") === -1) throw new Error("名單格式不符");
+  const get = (r, h) => col(h) === -1 ? "" : String(r[col(h)] == null ? "" : r[col(h)]).trim();
+  const rows = table.slice(1).map(r => ({
+    empId: normalizeId(get(r, "人事號")), session: get(r, "梯次"), identity: get(r, "身分"),
+    unit: get(r, "單位"), name: get(r, "姓名"), title: get(r, "職稱"), no: get(r, "已填寫編號")
+  })).filter(r => r.empId && r.session);
+  return { rows, at: Date.now() };
+}
+
+/** 讀取名單（同時只讀一次；ROSTER_MAX_AGE_MS 內重複查詢直接用記憶體裡的名單） */
+function loadRoster() {
+  if (roster && Date.now() - roster.at < CONFIG.ROSTER_MAX_AGE_MS) return Promise.resolve(roster);
+  if (!rosterPromise) {
+    rosterPromise = fetchRoster()
+      .then(r => { roster = r; return r; })
+      .finally(() => { rosterPromise = null; });
+  }
+  return rosterPromise;
+}
+
+/** 在名單中找此人事號 → 與後端 surveyLookup_ 相同格式的結果 */
+function lookupInRoster(ro, id) {
+  const mine = ro.rows.filter(r => r.empId === id);
+  const r = mine.find(x => x.session === SESSION);
+  if (r) {
+    return {
+      ok: true, found: true, source: "roster",
+      record: { session: r.session, identity: r.identity, unit: r.unit, name: r.name, empId: r.empId, title: r.title },
+      submittedBefore: r.no ? [r.no] : []
+    };
+  }
+  const others = mine.map(x => x.session).filter((s, i, a) => s !== SESSION && a.indexOf(s) === i);
+  return {
+    ok: false, error: "notfound", otherSessions: others, source: "roster",
+    message: others.length
+      ? "您報名的是" + others.join("、") + "，請填寫該梯次的問卷。"
+      : "查無此人事號的" + SESSION + "報名資料，請確認人事號，或洽教學部（分機 57440）。"
+  };
+}
+
+/** 顯示查詢結果（名單或後端的回應） */
+function applyLookup(res) {
+  if (res && res.ok && res.found && res.record) {
+    state.record = res.record;
+    state.blocked = (res.submittedBefore || [])[0] || null;
+    renderProfile();
+  } else if (res && res.error === "notfound") {
+    state.record = null; state.blocked = null;
+    const links = (res.otherSessions || []).filter(s => SESSIONS[s])
+      .map(s => `<a href="${SESSIONS[s].page}">前往${esc(s)}問卷 →</a>`).join("　");
+    showProfile(links ? "warn" : "error", `${esc(res.message || "查無報名資料。")}${links ? "<br>" + links : ""}`);
+  } else if (res && res.ok === false) {
+    showProfile("error", esc(res.message || "查詢失敗，請再試一次。"));
+  } else {
+    // 後端尚未部署問卷功能時，GET 會回傳名額資料
+    showProfile("error", "問卷系統尚未啟用，請稍後再試，或洽教學部（分機 57440）。");
+  }
+}
+
 async function doLookup(force) {
   const input = $("#empId");
   const id = normalizeId(input.value);
@@ -417,25 +539,27 @@ async function doLookup(force) {
   showProfile("loading", "查詢報名資料中…");
   $("#lookupBtn").disabled = true;
   try {
+    // 1) 公開名單（快、穩定）
+    let local = null;
+    try { local = lookupInRoster(await loadRoster(), id); } catch (e) { local = null; }
+    if (seq !== state.lookupSeq) return false;
+    if (local) {
+      applyLookup(local);
+      // 名單裡沒有：可能是剛報名、名單還沒更新 → 背景向後端確認，找到就自動更新畫面
+      if (!local.found) {
+        getJson({ action: "surveyLookup", session: SESSION, empId: id }, { signal: ctrl.signal })
+          .then(res => { if (seq === state.lookupSeq && res && res.ok && res.found) { applyLookup(res); updateProgress(); } })
+          .catch(() => {});
+      }
+      return !!state.record;
+    }
+    // 2) 名單讀不到：改問後端（可能較慢）
     const res = await getJson({ action: "surveyLookup", session: SESSION, empId: id }, {
       signal: ctrl.signal,
       onSlow: () => { if (seq === state.lookupSeq) showProfile("loading", "系統回應較慢，仍在查詢中，請稍候…（不需要重新按「查詢」）"); }
     });
     if (seq !== state.lookupSeq) return false;
-    if (res && res.ok && res.found && res.record) {
-      state.record = res.record;
-      state.blocked = (res.submittedBefore || [])[0] || null;
-      renderProfile();
-    } else if (res && res.error === "notfound") {
-      const links = (res.otherSessions || []).filter(s => SESSIONS[s])
-        .map(s => `<a href="${SESSIONS[s].page}">前往${esc(s)}問卷 →</a>`).join("　");
-      showProfile(links ? "warn" : "error", `${esc(res.message || "查無報名資料。")}${links ? "<br>" + links : ""}`);
-    } else if (res && res.ok === false) {
-      showProfile("error", esc(res.message || "查詢失敗，請再試一次。"));
-    } else {
-      // 後端尚未部署問卷功能時，GET 會回傳名額資料
-      showProfile("error", "問卷系統尚未啟用，請稍後再試，或洽教學部（分機 57440）。");
-    }
+    applyLookup(res);
   } catch (err) {
     if (seq !== state.lookupSeq) return false;
     state.lookedUp = "";
@@ -906,7 +1030,8 @@ function closeDone() {
 function init() {
   if (!SESS) { document.getElementById("app").textContent = "頁面設定錯誤：找不到梯次。"; return; }
   render();
-  // 預熱：先喚醒 Apps Script，使用者輸入完人事號時，查詢比較不會碰到冷啟動
+  // 先載入查詢名單（使用者輸完人事號時通常已經載好）；並喚醒 Apps Script（送出時會用到）
+  loadRoster().catch(() => {});
   fetch(CONFIG.API_URL + "?t=" + Date.now(), { cache: "no-store" }).catch(() => {});
   setupUpload("photo", "#photoUpload", "#photoInput");
   setupUpload("social", "#socialUpload", "#socialInput");

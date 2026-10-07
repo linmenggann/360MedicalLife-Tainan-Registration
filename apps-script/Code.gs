@@ -89,7 +89,7 @@ const COL_WIDTHS = [150, 90, 110, 140, 90, 90, 120, 130, 220, 110, 120, 70, 150,
 // 公開統計試算表（由 setupStatsPublishing 建立，ID 存於指令碼屬性）
 const STATS_PROP = 'STATS_SPREADSHEET_ID';
 const STATS_SHEET = '統計';
-const STATS_TITLE = '360°醫學人生 報名統計（公開，不含個資）';
+const STATS_TITLE = '360°醫學人生 報名統計與問卷查詢名單（知道連結即可檢視）';
 
 /* ---- 報名成功／行前資訊通知信 ---- */
 const NOTIFY_ON_REGISTER = true;                 // 報名成功後立即寄送通知信
@@ -556,17 +556,27 @@ function appendRow_(sheet, row) {
  * 呼叫端以 getLastRow() + 1 決定列號時，必須在 LockService 鎖定範圍內呼叫。
  */
 function writeRowAt_(sheet, r, row, headers, textCols, timeCol) {
-  const out = row.slice(0, headers.length);
-  while (out.length < headers.length) out.push('');
+  return writeRowsAt_(sheet, r, [row], headers, textCols, timeCol);
+}
+
+/** 同 writeRowAt_，一次寫入多列（從第 r 列開始）；文字欄整欄先設 @ 再寫入正規化值 */
+function writeRowsAt_(sheet, r, rows, headers, textCols, timeCol) {
+  const n = rows.length;
+  if (!n) return r;
+  const out = rows.map(row => {
+    const o = row.slice(0, headers.length);
+    while (o.length < headers.length) o.push('');
+    return o;
+  });
   textCols.forEach(h => {
     const c = headers.indexOf(h);
     if (c === -1) return;
-    out[c] = asSheetText_(out[c], h);
-    sheet.getRange(r, c + 1).setNumberFormat('@');
+    out.forEach(o => { o[c] = asSheetText_(o[c], h); });
+    sheet.getRange(r, c + 1, n, 1).setNumberFormat('@');
   });
   const t = timeCol ? headers.indexOf(timeCol) : -1;
-  if (t !== -1) sheet.getRange(r, t + 1).setNumberFormat('yyyy/MM/dd HH:mm:ss');
-  sheet.getRange(r, 1, 1, out.length).setValues([out]);
+  if (t !== -1) sheet.getRange(r, t + 1, n, 1).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+  sheet.getRange(r, 1, n, headers.length).setValues(out);
   return r;
 }
 
@@ -1292,6 +1302,33 @@ function publishStats() {
 
   sheet.clearContents();
   sheet.getRange(1, 1, out.length, 5).setValues(out);
+
+  try { publishSurveyLookup_(stats, rows, now); } catch (err) { Logger.log('publishSurveyLookup_ 失敗：' + err); }
+}
+
+/*
+ * 活動滿意度調查的人事號查詢名單：寫在公開統計試算表的「問卷查詢」分頁，問卷網頁以 GViz 讀取
+ * （Apps Script 回應常常很慢，GViz 快且穩定）。
+ * ⚠️ 此分頁任何拿到連結的人都能讀取：使用者 2026-10-07 同意公開人事號、梯次、身分、單位、姓名、職稱
+ *    與「已填寫編號」；E-mail、手機、出生日期、身分證號、餐食一律不放。
+ * 隨 publishStats 更新（每 5 分鐘、每筆報名與每份問卷送出後約 1 分鐘內）。
+ */
+const SURVEY_LOOKUP_SHEET = '問卷查詢';
+const SURVEY_LOOKUP_HEADERS = ['人事號', '梯次', '身分', '單位', '姓名', '職稱', '已填寫編號', '更新時間'];
+function publishSurveyLookup_(stats, rows, now) {
+  // 舊標題寫著「不含個資」，加入此名單後已不正確：改成現在的標題，避免有人誤以為可以公開轉貼
+  try { if (/不含個資/.test(stats.getName())) stats.rename(STATS_TITLE); } catch (e) {}
+  const sheet = stats.getSheetByName(SURVEY_LOOKUP_SHEET) || stats.insertSheet(SURVEY_LOOKUP_SHEET);
+  const done = {};                                     // 梯次|人事號 → 已填寫的問卷編號
+  SESSIONS.forEach(s => {
+    const sh = ss_().getSheetByName(SURVEY_SHEETS[s]);
+    if (sh) surveyEntries_(sh).forEach(x => { if (x.empId && !done[s + '|' + x.empId]) done[s + '|' + x.empId] = x.no || '已填寫'; });
+  });
+  const out = registrationsFromRows_(rows).map(r => [
+    r.empId, r.session, canonIdentity_(r.identity), r.unit, r.name, r.title, done[r.session + '|' + r.empId] || '', now
+  ]);
+  sheet.clearContents();
+  writeRowsAt_(sheet, 1, [SURVEY_LOOKUP_HEADERS].concat(out), SURVEY_LOOKUP_HEADERS, ['人事號', '單位', '姓名', '職稱'], null);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1742,6 +1779,7 @@ function submitSurvey_(d) {
       lock.releaseLock();
     }
     trashSurveyTemps_(session, submissionId, [photoId, socialId].filter(Boolean));
+    scheduleBackgroundJob_();                          // 約 1 分鐘內更新公開名單的「已填寫編號」
     return { ok: true, submitted: true, no: no, name: reg.name, social: !!social };
   } catch (err) {
     // 不刪除已上傳的照片：網頁重送時會沿用同一組檔案 ID
