@@ -1303,7 +1303,7 @@ function publishStats() {
  *      不限檔案大小，中斷可續傳（見下方「照片上傳」一節）。
  *   3. 送出 → POST action=survey（只帶檔案 ID）：
  *      a. 以人事號重新查總表（不採信網頁送來的姓名等資料）；確認檔案是這份問卷上傳的。
- *      b. 鎖定 → 決定「編號」（該分頁現有最大編號 + 1，從 1 開始）→ 檔案改名為「編號-姓名.副檔名」→ 寫入一列 → 解鎖。
+ *      b. 鎖定 → 決定「編號」（該分頁現有最大編號 + 1，從 1 開始）→ 檔案改名為「編號-梯次-姓名.副檔名」→ 寫入一列 → 解鎖。
  *   4. 每次送出帶一組送出代碼：Google 把 POST 轉成 GET、或網路中斷後網頁重送時，
  *      同一組代碼不會重複寫入，直接回覆原本的編號。
  *   每人每梯次限填寫一次（使用者 2026-10-06 要求）：同一梯次分頁已有此人事號就不再寫入。
@@ -1464,7 +1464,7 @@ function surveyStatus_(session, id) {
  * 2. 網頁把檔案切成 8 MB 分塊，直接 PUT 到上傳網址（Content-Range）；中斷時查詢已收到的位元組數，從中斷處續傳。
  * 3. 若瀏覽器無法直接連線上傳網址（例如網路或 CORS 限制），網頁改由後端代傳分塊
  *    （POST action=surveyUploadChunk），續傳查詢一律由後端代查（GET ?action=surveyUploadStatus）。
- * 4. 送出問卷時只傳檔案 ID；後端確認檔案確實是這份問卷上傳的，再改名為「編號-姓名.副檔名」。
+ * 4. 送出問卷時只傳檔案 ID；後端確認檔案確實是這份問卷上傳的，再改名為「編號-梯次-姓名.副檔名」。
  * 不限檔案大小（受 Apps Script 擁有者的雲端硬碟空間限制）。
  */
 const SURVEY_KINDS = { photo: '活動照', social: '社群媒體截圖' };
@@ -1474,7 +1474,7 @@ const SURVEY_UPLOAD_ORIGINS = [/^https:\/\/linmenggann\.github\.io$/, /^http:\/\
 const SURVEY_TEMP_PREFIX = '上傳中-';
 const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name';
 
-/** 檔名只用「編號-姓名」：去掉雲端硬碟與作業系統不允許的字元 */
+/** 檔名只用「編號-梯次-姓名」（例：1-第一梯次-王小明.jpg）：去掉雲端硬碟與作業系統不允許的字元 */
 function safeFileName_(s) {
   const v = String(s || '').replace(/[\\/:*?"<>|\u0000-\u001F]/g, '').replace(/\s+/g, ' ').trim();
   return v || '未具名';
@@ -1714,7 +1714,7 @@ function submitSurvey_(d) {
         return surveyDuplicate_(session, priorNow);
       }
       no = entries.reduce((m, x) => Math.max(m, x.no), 0) + 1;
-      const base = no + '-' + safeFileName_(reg.name);
+      const base = no + '-' + session + '-' + safeFileName_(reg.name);
       photoName = base + '.' + photo.ext;
       photo.file.setName(photoName);
       if (social) { socialName = base + '.' + social.ext; social.file.setName(socialName); }
