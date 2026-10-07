@@ -20,6 +20,9 @@ const CONFIG = {
   LOOKUP_SHEET: "問卷查詢",
   ROSTER_TIMEOUT_MS: 15000,
   ROSTER_MAX_AGE_MS: 60000,
+  // 自動查詢（不用按查詢）：名單裡一比對到就立刻帶出；還沒比對到時，停止輸入 1.2 秒且至少 5 個字才查詢（含向後端確認）
+  AUTO_LOOKUP_IDLE_MS: 1200,
+  AUTO_LOOKUP_MIN_LEN: 5,
   SUBMIT_TIMEOUT_MS: 60000,      // 送出問卷（照片已上傳，只帶檔案 ID）
   STORY_MIN: 20,                 // 與 Code.gs 的 SURVEY_STORY_MIN 相同
   STORY_MAX: 1000,
@@ -251,15 +254,12 @@ function render() {
       <section class="card" id="step1">
         <div class="card-head">
           <span class="step-no">1</span>
-          <div><h2>填寫人<span class="tag req">必填</span></h2><p>輸入人事號後按「查詢」，系統會帶出您的報名資料。</p></div>
+          <div><h2>填寫人<span class="tag req">必填</span></h2><p>輸入人事號後，系統會自動帶出您的報名資料。</p></div>
         </div>
         <div class="field" id="empField">
           <label for="empId">人事號</label>
-          <div class="lookup-row">
-            <input type="text" id="empId" name="empId" placeholder="例：910632 或 B20715" inputmode="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
-            <button type="button" class="btn btn-primary" id="lookupBtn">${ICONS.search}查詢</button>
-          </div>
-          <span class="err">請輸入人事號並按「查詢」。</span>
+          <input type="text" id="empId" name="empId" placeholder="例：910632 或 B20715" inputmode="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
+          <span class="err">請輸入人事號。</span>
         </div>
         <div class="profile" id="profile" aria-live="polite"></div>
       </section>
@@ -357,6 +357,7 @@ const state = {
   lookupSeq: 0,
   lookupInflight: null,    // 查詢中的 { id, promise }
   lookupAbort: null,       // 取消查詢中的請求（使用者改了人事號時）
+  typeTimer: null,         // 自動查詢的等待計時器
   photo: null,             // { blob（原檔 File）, name, preview, w, h }
   social: null,
   blocked: null,           // 此人事號已填寫過本梯次問卷時的編號（每人限填一次）
@@ -537,7 +538,6 @@ async function doLookup(force) {
   const ctrl = state.lookupAbort = new AbortController();
   state.record = null; state.blocked = null; state.lookedUp = id;
   showProfile("loading", "查詢報名資料中…");
-  $("#lookupBtn").disabled = true;
   try {
     // 1) 公開名單（快、穩定）
     let local = null;
@@ -556,16 +556,16 @@ async function doLookup(force) {
     // 2) 名單讀不到：改問後端（可能較慢）
     const res = await getJson({ action: "surveyLookup", session: SESSION, empId: id }, {
       signal: ctrl.signal,
-      onSlow: () => { if (seq === state.lookupSeq) showProfile("loading", "系統回應較慢，仍在查詢中，請稍候…（不需要重新按「查詢」）"); }
+      onSlow: () => { if (seq === state.lookupSeq) showProfile("loading", "系統回應較慢，仍在查詢中，請稍候…"); }
     });
     if (seq !== state.lookupSeq) return false;
     applyLookup(res);
   } catch (err) {
     if (seq !== state.lookupSeq) return false;
     state.lookedUp = "";
-    showProfile("error", "目前系統連線較慢，查詢未完成。請稍後再按一次「查詢」；也可以先填寫下方問卷，送出時會自動再查詢。");
+    showProfile("error", `目前系統連線較慢，查詢未完成。可以先填寫下方問卷，送出時會自動再查詢。
+      <br><button type="button" class="btn btn-ghost" data-act="retry" style="margin-top:.5rem">重新查詢</button>`);
   } finally {
-    if (seq === state.lookupSeq) $("#lookupBtn").disabled = false;
     updateProgress();
   }
   return !!state.record;
@@ -1031,25 +1031,38 @@ function init() {
   if (!SESS) { document.getElementById("app").textContent = "頁面設定錯誤：找不到梯次。"; return; }
   render();
   // 先載入查詢名單（使用者輸完人事號時通常已經載好）；並喚醒 Apps Script（送出時會用到）
-  loadRoster().catch(() => {});
+  loadRoster().then(() => {
+    const id = normalizeId($("#empId").value);
+    if (id && !state.record && !state.lookupInflight && lookupInRoster(roster, id).found) lookup(true);
+  }).catch(() => {});
   fetch(CONFIG.API_URL + "?t=" + Date.now(), { cache: "no-store" }).catch(() => {});
   setupUpload("photo", "#photoUpload", "#photoInput");
   setupUpload("social", "#socialUpload", "#socialInput");
 
   const emp = $("#empId");
-  $("#lookupBtn").addEventListener("click", () => lookup(true));
-  emp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); lookup(true); } });
-  emp.addEventListener("blur", () => { if (normalizeId(emp.value) && normalizeId(emp.value) !== state.lookedUp) lookup(false); });
+  // 自動查詢：輸入時就在名單裡比對，比對到立刻帶出；比對不到時等停止輸入再查詢（避免邊打字邊出現「查無」）
+  const autoLookup = () => {
+    clearTimeout(state.typeTimer);
+    const id = normalizeId(emp.value);
+    if (!id || (id === state.lookedUp && (state.record || state.lookupInflight))) return;
+    const hit = roster ? lookupInRoster(roster, id) : null;
+    if (hit && hit.found) { lookup(true); return; }
+    if (id.length >= CONFIG.AUTO_LOOKUP_MIN_LEN) state.typeTimer = setTimeout(() => lookup(true), CONFIG.AUTO_LOOKUP_IDLE_MS);
+  };
+  emp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(state.typeTimer); lookup(true); } });
+  emp.addEventListener("blur", () => { clearTimeout(state.typeTimer); if (normalizeId(emp.value) && normalizeId(emp.value) !== state.lookedUp) lookup(false); });
   emp.addEventListener("input", () => {
     if (normalizeId(emp.value) !== state.lookedUp) {
       state.record = null; state.blocked = null; hideProfile();
       state.lookupSeq++;                                 // 舊查詢的結果作廢
       if (state.lookupAbort) { state.lookupAbort.abort(); state.lookupAbort = null; }
       state.lookupInflight = null;
-      $("#lookupBtn").disabled = false;
+      state.lookedUp = "";
     }
+    autoLookup();
     updateProgress(); saveDraft();
   });
+  $("#profile").addEventListener("click", e => { if (e.target.closest("[data-act=retry]")) lookup(true); });
 
   $("#surveyForm").addEventListener("change", e => {
     const q = e.target.name && /^q\d+$/.test(e.target.name) ? $("#qbox" + e.target.name.slice(1)) : null;
