@@ -29,12 +29,13 @@ const SESSION = document.body.dataset.session;
 const SESS = SESSIONS[SESSION];
 
 // html：窄螢幕只在 <wbr> 處換行（非常／同意），不會切成「非常同／意」
+// 由左到右 1 → 5（非常同意在最右邊）；分數值不變，試算表一樣記 1～5
 const SCALE = [
-  { v: 5, label: "非常同意", html: "非常<wbr>同意" },
-  { v: 4, label: "同意", html: "同意" },
-  { v: 3, label: "普通", html: "普通" },
+  { v: 1, label: "非常不同意", html: "非常<wbr>不同意" },
   { v: 2, label: "不同意", html: "不同意" },
-  { v: 1, label: "非常不同意", html: "非常<wbr>不同意" }
+  { v: 3, label: "普通", html: "普通" },
+  { v: 4, label: "同意", html: "同意" },
+  { v: 5, label: "非常同意", html: "非常<wbr>同意" }
 ];
 
 const ICONS = {
@@ -216,7 +217,7 @@ function render() {
           <span class="step-no">2</span>
           <div><h2>活動滿意度<span class="tag req">必填</span></h2><p>請依您的感受，為每一題選擇最符合的分數。</p></div>
         </div>
-        <p class="scale-legend"><span><b>5</b> 非常同意</span><span><b>4</b> 同意</span><span><b>3</b> 普通</span><span><b>2</b> 不同意</span><span><b>1</b> 非常不同意</span></p>
+        <p class="scale-legend">${SCALE.map(s => `<span><b>${s.v}</b> ${s.label}</span>`).join("")}</p>
         ${groupsHtml}
         <p class="q-count">已作答 <b id="answeredCount">0</b> ／ ${QUESTION_COUNT} 題</p>
       </section>
