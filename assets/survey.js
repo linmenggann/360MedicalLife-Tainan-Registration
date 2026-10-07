@@ -261,16 +261,16 @@ function render() {
       <section class="card" id="step4">
         <div class="card-head">
           <span class="step-no">4</span>
-          <div><h2>手拉旗自拍・分享社群<span class="tag opt">選填</span></h2><p>上傳社群媒體截圖，即可獲得精美小禮物一份！</p></div>
+          <div><h2>手拉旗自拍・分享社群<span class="tag opt">選填</span></h2><p>上傳社群貼文截圖，教學部確認後將通知您領取精美小禮物！</p></div>
         </div>
         <div class="gift">
           ${ICONS.gift}
           <div>
             <h3>拍照分享，送精美小禮物</h3>
             <ol>
-              <li>與<b>教學部</b>及<b>奇美醫院手拉旗</b>合影自拍</li>
-              <li>分享到您的社群媒體（Facebook、Instagram、Threads 等）</li>
-              <li>將貼文<b>截圖</b>上傳到下方，即可獲得<b>精美小禮物一份</b></li>
+              <li>與<b>教學部</b>或<b>奇美醫院手拉旗</b>合影自拍</li>
+              <li>將照片分享到任一社群媒體（Facebook、Instagram、Threads 等皆可）</li>
+              <li>將您的社群貼文<b>截圖</b>上傳至下方，教學部確認後，將通知您前來領取<b>精美小禮物</b></li>
             </ol>
           </div>
         </div>
