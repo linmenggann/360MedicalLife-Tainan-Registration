@@ -26,6 +26,7 @@ const CONFIG = {
   SUBMIT_TIMEOUT_MS: 60000,      // 送出問卷（照片已上傳，只帶檔案 ID）
   STORY_MIN: 20,                 // 與 Code.gs 的 SURVEY_STORY_MIN 相同
   STORY_MAX: 1000,
+  SUGGEST_MAX: 1000,             // 其他建議或回饋（選填），與 Code.gs 的 SURVEY_SUGGEST_MAX 相同
   // 照片：原檔、不限大小，直接以 Google Drive API 可續傳上傳（分塊續傳）
   CHUNK_BYTES: 8 * 1024 * 1024,  // 分塊大小（Drive 規定為 256 KB 的倍數）
   CHUNK_TIMEOUT_MS: 10 * 60 * 1000,
@@ -199,7 +200,7 @@ function saveDraft() {
   try {
     const answers = {};
     for (let i = 1; i <= QUESTION_COUNT; i++) { const c = $(`input[name=q${i}]:checked`); if (c) answers[i] = c.value; }
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ empId: $("#empId").value, answers, story: $("#story").value, sid: state.submissionId, uploads: state.uploads }));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ empId: $("#empId").value, answers, story: $("#story").value, suggest: $("#suggest").value, sid: state.submissionId, uploads: state.uploads }));
   } catch (e) {}
 }
 function loadDraft() {
@@ -272,6 +273,11 @@ function render() {
         <p class="scale-legend">${SCALE.map(s => `<span><b>${s.v}</b> ${s.label}</span>`).join("")}</p>
         ${groupsHtml}
         <p class="q-count">已作答 <b id="answeredCount">0</b> ／ ${QUESTION_COUNT} 題</p>
+        <div class="field suggest" id="suggestField">
+          <label for="suggest">其他建議或回饋<span class="tag opt">選填</span></label>
+          <textarea id="suggest" name="suggest" maxlength="${CONFIG.SUGGEST_MAX}" placeholder="對行程、導覽、餐食、交通或活動安排的任何建議，都歡迎告訴我們。"></textarea>
+          <div class="counter"><span>選填，${CONFIG.SUGGEST_MAX} 字以內</span><span>已輸入 <b id="suggestCount">0</b> 字</span></div>
+        </div>
       </section>
 
       <section class="card" id="step3">
@@ -976,6 +982,7 @@ async function onSubmit(e) {
       empId: state.record.empId,
       answers: answers(),
       story: $("#story").value.trim(),
+      suggestion: $("#suggest").value.trim(),
       photoFileId: ids.photo,
       socialFileId: ids.social || ""
     };
@@ -1073,6 +1080,9 @@ function init() {
     if (storyLength() >= CONFIG.STORY_MIN) $("#storyField").classList.remove("invalid");
     updateProgress(); saveDraft();
   });
+  const suggest = $("#suggest");
+  const countSuggest = () => { $("#suggestCount").textContent = Array.from(suggest.value.trim()).length; };
+  suggest.addEventListener("input", () => { countSuggest(); saveDraft(); });
   $("#surveyForm").addEventListener("submit", onSubmit);
   $("#doneOk").addEventListener("click", closeDone);
 
@@ -1084,6 +1094,7 @@ function init() {
     if (d.empId) emp.value = d.empId;
     Object.keys(d.answers || {}).forEach(i => { const el = $(`#q${i}_${d.answers[i]}`); if (el) el.checked = true; });
     if (d.story) $("#story").value = d.story;
+    if (d.suggest) { $("#suggest").value = d.suggest; countSuggest(); }
     if (normalizeId(emp.value)) lookup(true);
   }
   updateProgress();

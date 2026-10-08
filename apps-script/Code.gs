@@ -1346,8 +1346,9 @@ const SURVEY_QUESTIONS = [
 ];
 const SURVEY_HEADERS = ['編號', '填寫時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱']
   .concat(SURVEY_QUESTIONS)
-  .concat(['最感動的一段話', '活動照', '社群媒體截圖', '送出代碼']);
-const SURVEY_TEXT_COLS = ['人事號', '單位', '姓名', '職稱', '最感動的一段話'];
+  .concat(['其他建議或回饋', '最感動的一段話', '活動照', '社群媒體截圖', '送出代碼']);   // 其他建議或回饋：選填（2026-10-08 新增）
+const SURVEY_TEXT_COLS = ['人事號', '單位', '姓名', '職稱', '其他建議或回饋', '最感動的一段話'];
+const SURVEY_SUGGEST_MAX = 1000;
 const SURVEY_STORY_MIN = 20;                 // 最感動的一段話至少字數（與 survey.js 相同）
 const SURVEY_STORY_MAX = 1000;
 
@@ -1371,7 +1372,7 @@ function ensureSurveySheet_(session) {
   sheet.setFrozenRows(1);
   sheet.setRowHeight(1, 32);
   const widths = { '編號': 60, '填寫時間': 150, '梯次': 80, '身分': 140, '單位': 130, '姓名': 90, '人事號': 90, '職稱': 110,
-    '最感動的一段話': 360, '活動照': 150, '社群媒體截圖': 150, '送出代碼': 120 };
+    '其他建議或回饋': 300, '最感動的一段話': 360, '活動照': 150, '社群媒體截圖': 150, '送出代碼': 120 };
   headers.forEach((h, i) => sheet.setColumnWidth(i + 1, widths[h] || 120));
   const rows = sheet.getMaxRows() - 1;
   if (rows > 0) {
@@ -1381,16 +1382,31 @@ function ensureSurveySheet_(session) {
   return sheet;
 }
 
-/** 讀取表頭；缺少的欄位補在最後（承辦人調整過欄位順序也能依表頭名稱寫入） */
+/**
+ * 讀取表頭；缺少的欄位插在 SURVEY_HEADERS 裡前一個欄位的右邊（例如新增的「其他建議或回饋」插在 Q10 之後），
+ * 找不到前一個欄位才補在最後。承辦人調整過欄位順序也能依表頭名稱寫入。
+ */
 function surveyHeaders_(sheet) {
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
   while (headers.length && headers[headers.length - 1] === '') headers.pop();
-  const missing = SURVEY_HEADERS.filter(h => headers.indexOf(h) === -1);
-  if (missing.length) {
-    sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
-    missing.forEach(h => headers.push(h));
+  if (!headers.length) {                                   // 新分頁：直接寫入整列表頭
+    sheet.getRange(1, 1, 1, SURVEY_HEADERS.length).setValues([SURVEY_HEADERS]);
+    return SURVEY_HEADERS.slice();
   }
+  SURVEY_HEADERS.forEach((h, i) => {
+    if (headers.indexOf(h) !== -1) return;
+    let after = -1;
+    for (let k = i - 1; k >= 0 && after === -1; k--) after = headers.indexOf(SURVEY_HEADERS[k]);
+    if (after === -1 || after === headers.length - 1) {
+      sheet.getRange(1, headers.length + 1).setValue(h);
+      headers.push(h);
+    } else {
+      sheet.insertColumnAfter(after + 1);                  // 既有資料一併右移
+      sheet.getRange(1, after + 2).setValue(h);
+      headers.splice(after + 1, 0, h);
+    }
+  });
   return headers;
 }
 
@@ -1678,6 +1694,8 @@ function submitSurvey_(d) {
   const story = txt_(d.story);
   if (story.length < SURVEY_STORY_MIN) return { ok: false, error: 'invalid', message: '最感動的一段話請至少寫 ' + SURVEY_STORY_MIN + ' 個字。' };
   if (story.length > SURVEY_STORY_MAX) return { ok: false, error: 'invalid', message: '最感動的一段話請在 ' + SURVEY_STORY_MAX + ' 字以內。' };
+  const suggestion = txt_(d.suggestion);                   // 選填
+  if (suggestion.length > SURVEY_SUGGEST_MAX) return { ok: false, error: 'invalid', message: '其他建議或回饋請在 ' + SURVEY_SUGGEST_MAX + ' 字以內。' };
   const photoId = String(d.photoFileId || '').trim();
   const socialId = String(d.socialFileId || '').trim();
   if (!photoId) return { ok: false, error: 'invalid', message: '請上傳活動照。' };
@@ -1734,7 +1752,7 @@ function submitSurvey_(d) {
       const values = {
         '編號': no, '填寫時間': new Date(), '梯次': session, '身分': reg.identity, '單位': reg.unit,
         '姓名': reg.name, '人事號': reg.empId, '職稱': reg.title,
-        '最感動的一段話': '', '活動照': '', '社群媒體截圖': '', '送出代碼': submissionId
+        '其他建議或回饋': '', '最感動的一段話': '', '活動照': '', '社群媒體截圖': '', '送出代碼': submissionId
       };
       SURVEY_QUESTIONS.forEach((q, i) => { values[q] = answers[i]; });
       const r = sheet.getLastRow() + 1;
@@ -1745,6 +1763,7 @@ function submitSurvey_(d) {
         return (url ? b.setLinkUrl(url) : b).build();
       };
       sheet.getRange(r, headers.indexOf('最感動的一段話') + 1).setRichTextValue(rich(story));
+      if (suggestion) sheet.getRange(r, headers.indexOf('其他建議或回饋') + 1).setRichTextValue(rich(suggestion));
       sheet.getRange(r, headers.indexOf('活動照') + 1).setRichTextValue(rich(photoName, photo.file.getUrl()));
       if (social) sheet.getRange(r, headers.indexOf('社群媒體截圖') + 1).setRichTextValue(rich(socialName, social.file.getUrl()));
       SpreadsheetApp.flush();
