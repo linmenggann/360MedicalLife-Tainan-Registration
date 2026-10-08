@@ -36,23 +36,11 @@ const SESSION_DATES = {
   '第二梯次': '115/11/14–11/15',
   '第三梯次': '115/11/21–11/22'
 };
-// 身分清單與預設限額（三梯次共用名額時使用這組）
-const LIMITS = {
-  '西醫UGY/醫事職類UGY': 8,
-  '西醫PGY': 10,
-  '醫事職類PGY': 9,
-  '臨床教師': 8
-};
-// 各梯次限額（2026-09-30 調整：第二、第三梯次臨床教師改為 9 人；
-// 2026-10-05 調整：第一梯次改為 UGY 8、西醫PGY 4、醫事職類PGY 0、臨床教師 23；
-// 2026-10-06 調整：第二梯次西醫PGY 0、臨床教師 19，第三梯次西醫PGY 4、臨床教師 15；
-// 2026-10-07 調整：第三梯次改為 UGY 5、西醫PGY 4、醫事職類PGY 6、臨床教師 21）。限額 0 在網頁上顯示為「額滿」
-// index.html 與 dashboard.html 也有同一份，並以後端回傳的 sessionLimits 為準
-const SESSION_LIMITS = {
-  '第一梯次': { '西醫UGY/醫事職類UGY': 8, '西醫PGY': 4, '醫事職類PGY': 0, '臨床教師': 23 },
-  '第二梯次': { '西醫UGY/醫事職類UGY': 8, '西醫PGY': 0, '醫事職類PGY': 9, '臨床教師': 19 },
-  '第三梯次': { '西醫UGY/醫事職類UGY': 5, '西醫PGY': 4, '醫事職類PGY': 6, '臨床教師': 21 }
-};
+// 身分清單（報名表的身分選項；2026-10-08 起不再分身分限額）
+const IDENTITIES = ['西醫UGY/醫事職類UGY', '西醫PGY', '醫事職類PGY', '臨床教師'];
+// 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；
+// 未達上限時各身分皆可報名）。index.html 與 dashboard.html 以後端回傳的 sessionCaps 為準
+const SESSION_CAPS = { '第一梯次': 35, '第二梯次': 36, '第三梯次': 36 };
 // 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
 // 試算表既有資料、舊版網頁送來的值仍可能是舊名稱：讀取、統計與寫入前一律換成新名稱。
 // 既有資料可用選單「身分名稱更新為新名稱」一次改寫。
@@ -61,15 +49,10 @@ function canonIdentity_(v) {
   const k = String(v == null ? '' : v).trim();
   return IDENTITY_ALIASES[k] || k;
 }
-/** 某梯次某身分的限額；三梯次共用名額時用 LIMITS */
-function limitOf_(session, identity) {
-  if (QUOTA_SCOPE !== 'total' && SESSION_LIMITS[session] && SESSION_LIMITS[session][identity] !== undefined) {
-    return SESSION_LIMITS[session][identity];
-  }
-  return LIMITS[identity];
+/** 某梯次目前已報名總人數 */
+function sessionTotal_(counts, session) {
+  return IDENTITIES.reduce((n, k) => n + ((counts[session] || {})[k] || 0), 0);
 }
-// "session"：各梯次分別計算名額；"total"：三梯次共用名額（需與 index.html 的 CONFIG.QUOTA_SCOPE 一致）
-const QUOTA_SCOPE = 'session';
 
 // 儀表板（dashboard.html）存取金鑰：需與 dashboard.html 的 CONFIG.DASHBOARD_KEY 相同；兩者皆留空則不檢查
 const DASHBOARD_KEY = 'chimei360';
@@ -238,7 +221,7 @@ function renameLegacyIdentities() {
 function showCounts() {
   const counts = getCounts_(getSheet_(MASTER_SHEET));
   const lines = SESSIONS.map(s => s + '（' + SESSION_DATES[s] + '）：' +
-    Object.keys(LIMITS).map(k => k + ' ' + counts[s][k] + '/' + limitOf_(s, k)).join('、'));
+    sessionTotal_(counts, s) + '/' + SESSION_CAPS[s] + ' 人（' + IDENTITIES.map(k => k + ' ' + counts[s][k]).join('、') + '）');
   SpreadsheetApp.getUi().alert('各梯次已報名人數\n\n' + lines.join('\n'));
 }
 
@@ -261,7 +244,7 @@ function clearCache_() {
 /* ------------------------------------------------------------------ */
 function emptyCounts_() {
   const c = {};
-  SESSIONS.forEach(s => { c[s] = {}; Object.keys(LIMITS).forEach(k => c[s][k] = 0); });
+  SESSIONS.forEach(s => { c[s] = {}; IDENTITIES.forEach(k => c[s][k] = 0); });
   return c;
 }
 
@@ -304,13 +287,6 @@ function registrationsFromRows_(rows) {
   });
 }
 
-function usedCount_(counts, session, identity) {
-  if (QUOTA_SCOPE === 'total') {
-    return SESSIONS.reduce((n, s) => n + counts[s][identity], 0);
-  }
-  return counts[session][identity];
-}
-
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
@@ -320,10 +296,9 @@ function countsPayload_(counts) {
   return {
     ok: true,
     counts: counts,
-    limits: LIMITS,
-    sessionLimits: SESSION_LIMITS,
+    identities: IDENTITIES,
+    sessionCaps: SESSION_CAPS,                 // 各梯次總報名人數上限（不分身分）
     sessions: SESSIONS,
-    quotaScope: QUOTA_SCOPE,
     statsSpreadsheetId: PropertiesService.getScriptProperties().getProperty(STATS_PROP) || '',
     statsSheet: STATS_SHEET,
     ts: new Date().toISOString()
@@ -409,7 +384,7 @@ function doPost(e) {
 
     if (!empId) return json_({ ok: false, error: 'invalid', message: '人事號不可空白' });
     if (SESSIONS.indexOf(session) === -1) return json_({ ok: false, error: 'invalid', message: '梯次不正確' });
-    if (LIMITS[identity] === undefined) return json_({ ok: false, error: 'invalid', message: '身分不正確' });
+    if (IDENTITIES.indexOf(identity) === -1) return json_({ ok: false, error: 'invalid', message: '身分不正確' });
     if (!/^[A-Z][1289]\d{8}$/.test(nationalId)) return json_({ ok: false, error: 'invalid', message: '身分證號格式不正確' });
     if (['葷食', '素食'].indexOf(String(d.meal)) === -1) return json_({ ok: false, error: 'invalid', message: '餐食不正確' });
 
@@ -433,9 +408,9 @@ function doPost(e) {
       }
     }
 
-    // 名額檢查
-    if (usedCount_(counts, session, identity) >= limitOf_(session, identity)) {
-      return json_({ ok: false, error: 'full', counts: counts, message: session + '的「' + identity + '」名額已額滿，請改選其他梯次或洽教學部詢問候補。' });
+    // 名額檢查：只看該梯次總人數是否已達上限（不分身分）
+    if (sessionTotal_(counts, session) >= SESSION_CAPS[session]) {
+      return json_({ ok: false, error: 'full', counts: counts, message: session + '報名人數已額滿，請改選其他梯次或洽教學部詢問候補。' });
     }
 
     const row = [
@@ -1018,7 +993,7 @@ function adminAddSessions(empId, targetSessions) {
     targetSessions.forEach(s => {
       if (SESSIONS.indexOf(s) === -1) { skipped.push(s + '（梯次名稱不正確）'); return; }
       if (has.indexOf(s) !== -1) { skipped.push(s + '（已報名）'); return; }
-      if (usedCount_(counts, s, identity) >= limitOf_(s, identity)) { skipped.push(s + '（' + identity + '名額已滿）'); return; }
+      if (sessionTotal_(counts, s) >= SESSION_CAPS[s]) { skipped.push(s + '（報名人數已額滿）'); return; }
 
       const row = baseRow.slice(0, HEADERS.length);   // 文字欄的撇號與日期轉文字由 appendRow_ 統一處理
       row[COL['報名時間'] - 1] = new Date();
@@ -1280,10 +1255,8 @@ function publishStats() {
   const now = Utilities.formatDate(new Date(), tz, 'yyyy/MM/dd HH:mm:ss');
   const out = [['類型', '鍵1', '鍵2', '數值', '更新時間']];
 
-  out.push(['設定', 'quotaScope', '', QUOTA_SCOPE, now]);
-  Object.keys(LIMITS).forEach(k => out.push(['限額', k, '', LIMITS[k], now]));
-  SESSIONS.forEach(s => Object.keys(LIMITS).forEach(k => out.push(['梯次限額', s, k, limitOf_(s, k), now])));
-  SESSIONS.forEach(s => Object.keys(LIMITS).forEach(k => out.push(['名額', s, k, counts[s][k], now])));
+  SESSIONS.forEach(s => out.push(['梯次上限', s, '', SESSION_CAPS[s], now]));
+  SESSIONS.forEach(s => IDENTITIES.forEach(k => out.push(['名額', s, k, counts[s][k], now])));
 
   const meals = {}, daily = {}, units = {};
   SESSIONS.forEach(s => meals[s] = { '葷食': 0, '素食': 0 });

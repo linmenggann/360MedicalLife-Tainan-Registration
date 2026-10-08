@@ -195,7 +195,7 @@ tr.total td{font-weight:700;background:#fffaf0}
       <div class="chart" id="stackChart"></div>
     </div>
     <div class="card">
-      <div class="section-title"><h2>名額一覽表</h2><span class="sub">已報名／限額</span></div>
+      <div class="section-title"><h2>名額一覽表</h2><span class="sub">各身分已報名人數；合計列為已報名／梯次上限</span></div>
       <div class="table-wrap"><table id="matrix"></table></div>
     </div>
   </section>
@@ -248,17 +248,13 @@ const SESSIONS = [
   { key: "第三梯次", date: "115/11/21（六）–11/22（日）", short: "11/21–11/22" }
 ];
 const IDENTITIES = [
-  { key: "西醫UGY/醫事職類UGY", limit: 8,  color: "var(--s-ugy)",     hex: "#3a8a5c" },
-  { key: "西醫PGY",     limit: 10, color: "var(--s-pgy)",     hex: "#d24a2e" },
-  { key: "醫事職類PGY", limit: 9,  color: "var(--s-mpgy)",    hex: "#2f6db5" },
-  { key: "臨床教師",    limit: 8,  color: "var(--s-teacher)", hex: "#c9880c" }
+  { key: "西醫UGY/醫事職類UGY", color: "var(--s-ugy)",     hex: "#3a8a5c" },
+  { key: "西醫PGY",     color: "var(--s-pgy)",     hex: "#d24a2e" },
+  { key: "醫事職類PGY", color: "var(--s-mpgy)",    hex: "#2f6db5" },
+  { key: "臨床教師",    color: "var(--s-teacher)", hex: "#c9880c" }
 ];
-// 各梯次限額（2026-09-30：第二、第三梯次臨床教師 9 人；2026-10-05：第一梯次改為 UGY 8、PGY 4、醫事職類PGY 0、臨床教師 23；2026-10-06：第二梯次 PGY 0、臨床教師 19，第三梯次 PGY 4、臨床教師 15；2026-10-07：第三梯次改為 UGY 5、PGY 4、醫事職類PGY 6、臨床教師 21）。限額 0 一律顯示為「額滿」。載入後以後端或公開統計回傳的值為準
-const SESSION_LIMITS = {
-  "第一梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 4, "醫事職類PGY": 0, "臨床教師": 23 },
-  "第二梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 0, "醫事職類PGY": 9, "臨床教師": 19 },
-  "第三梯次": { "西醫UGY/醫事職類UGY": 5, "西醫PGY": 4, "醫事職類PGY": 6, "臨床教師": 21 }
-};
+// 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限）。載入後以後端或公開統計回傳的值為準
+const SESSION_CAPS = { "第一梯次": 35, "第二梯次": 36, "第三梯次": 36 };
 // 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
 // 既有報名資料、公開統計、本機快取與尚未重新部署的後端仍可能使用舊名稱，讀取時一律換成新名稱。
 const IDENTITY_ALIASES = { "西醫UGY": "西醫UGY/醫事職類UGY" };
@@ -266,7 +262,7 @@ function canonIdentity(k){
   k = String(k ?? "").trim();
   return IDENTITY_ALIASES[k] || k;
 }
-/** 以身分為鍵的物件（人數或限額）換成新名稱；sum＝同一身分新舊名稱並存時相加（人數用） */
+/** 以身分為鍵的人數物件換成新名稱；sum＝同一身分新舊名稱並存時相加 */
 function canonKeys(obj, sum){
   const out = {};
   Object.keys(obj || {}).forEach(k => {
@@ -281,15 +277,15 @@ function canonCounts(c){
   return out;
 }
 const canonRegistrations = list => Array.isArray(list) ? list.map(r => Object.assign({}, r, { identity: canonIdentity(r.identity) })) : list;
-function mergeSessionLimits(src){
+function mergeSessionCaps(src){
   if (!src) return;
-  Object.keys(src).forEach(s => { SESSION_LIMITS[s] = Object.assign({}, SESSION_LIMITS[s] || {}, canonKeys(src[s])); });
+  Object.keys(src).forEach(s => { if (Number(src[s]) > 0) SESSION_CAPS[s] = Number(src[s]); });
 }
 
 const LS_CACHE = "tainan360_dashboard_cache";
 const LS_STATS_ID = "tainan360_stats_spreadsheet_id";
 // agg：{ meals:{梯次:{葷食,素食}}, daily:{yyyy-mm-dd:n}, units:{單位:n} }；來自名單或 CSV 統計
-let state = { counts: null, limits: null, quotaScope: "session", registrations: null, agg: null, ts: null, rosterTs: null, source: "", unlocked: false, online: false };
+let state = { counts: null, registrations: null, agg: null, ts: null, rosterTs: null, source: "", unlocked: false, online: false };
 
 /* ---------------- 工具 ---------------- */
 const $ = s => document.querySelector(s);
@@ -297,22 +293,12 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const fmtTime = d => d.toLocaleString("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 const emptyCounts = () => Object.fromEntries(SESSIONS.map(s => [s.key, Object.fromEntries(IDENTITIES.map(i => [i.key, 0]))]));
 function used(session, identity){
-  if (!state.counts) return 0;
-  if (state.quotaScope === "total") return SESSIONS.reduce((n, s) => n + (state.counts[s.key]?.[identity] || 0), 0);
-  return state.counts[session]?.[identity] || 0;
+  return state.counts?.[session]?.[identity] || 0;
 }
-/** 某梯次某身分的限額；三梯次共用名額時用各身分的預設限額 */
-function limitOf(identity, session){
-  const s = SESSION_LIMITS[session];
-  if (state.quotaScope !== "total" && s && s[identity] != null) return Number(s[identity]);
-  return (state.limits && state.limits[identity]) || IDENTITIES.find(i => i.key === identity).limit;
-}
-/** 某梯次的總名額 */
-function sessionLimit(session){ return IDENTITIES.reduce((n, i) => n + limitOf(i.key, session), 0); }
-/** 全部梯次的總名額（共用名額時為單一梯次的總數） */
-function totalLimitAll(){
-  return state.quotaScope === "total" ? IDENTITIES.reduce((n, i) => n + limitOf(i.key), 0) : SESSIONS.reduce((n, s) => n + sessionLimit(s.key), 0);
-}
+/** 某梯次的總報名人數上限（不分身分） */
+function sessionLimit(session){ return SESSION_CAPS[session] || 0; }
+/** 全部梯次的上限合計 */
+function totalLimitAll(){ return SESSIONS.reduce((n, s) => n + sessionLimit(s.key), 0); }
 function sessionTotal(session){ return IDENTITIES.reduce((n, i) => n + (state.counts?.[session]?.[i.key] || 0), 0); }
 
 function notice(type, html){
@@ -432,38 +418,37 @@ async function fetchGvizStats(){
 
 function statsFromRows(rows){
   if (!rows.length || String(rows[0][0]).trim() !== "類型") throw new Error("統計資料格式不符");
-  const counts = emptyCounts(), limits = {}, agg = { meals: Object.fromEntries(SESSIONS.map(s => [s.key, { "葷食": 0, "素食": 0 }])), daily: {}, units: {} };
-  let quotaScope = "session", updated = "";
+  const counts = emptyCounts(), caps = {}, agg = { meals: Object.fromEntries(SESSIONS.map(s => [s.key, { "葷食": 0, "素食": 0 }])), daily: {}, units: {} };
+  let updated = "";
   rows.slice(1).forEach(([type, k1, k2, v, ts]) => {
     const n = Number(v) || 0;
-    if (type === "名額" || type === "梯次限額") k2 = canonIdentity(k2);
+    if (type === "名額") k2 = canonIdentity(k2);
     if (type === "名額" && counts[k1] && counts[k1][k2] !== undefined) counts[k1][k2] += n;
-    else if (type === "限額") limits[canonIdentity(k1)] = n;
-    else if (type === "梯次限額" && k1 && k2 && v !== "") mergeSessionLimits({ [k1]: { [k2]: n } });
+    else if (type === "梯次上限" && k1 && v !== "") caps[k1] = n;
     else if (type === "餐食" && agg.meals[k1] && agg.meals[k1][k2] !== undefined) agg.meals[k1][k2] = n;
     else if (type === "每日") agg.daily[k1] = n;
     else if (type === "單位") agg.units[k1] = n;
-    else if (type === "設定" && k1 === "quotaScope") quotaScope = v || "session";
     if (ts) updated = ts;
   });
-  return { counts, limits: Object.keys(limits).length ? limits : null, agg, quotaScope, updated };
+  mergeSessionCaps(caps);
+  return { counts, agg, updated };
 }
 
 function saveCache(){
-  try { localStorage.setItem(LS_CACHE, JSON.stringify({ counts: state.counts, limits: state.limits, quotaScope: state.quotaScope, registrations: state.registrations, agg: state.agg, ts: state.ts, rosterTs: state.rosterTs, source: state.source })); } catch(e){}
+  try { localStorage.setItem(LS_CACHE, JSON.stringify({ counts: state.counts, registrations: state.registrations, agg: state.agg, ts: state.ts, rosterTs: state.rosterTs, source: state.source })); } catch(e){}
 }
 function loadCache(){
   try {
     const c = JSON.parse(localStorage.getItem(LS_CACHE) || "null");
     if (!c || !c.counts) return false;
-    Object.assign(state, { counts: canonCounts(c.counts), limits: c.limits ? canonKeys(c.limits) : null, quotaScope: c.quotaScope || "session", registrations: canonRegistrations(c.registrations) || null, agg: c.agg || null, ts: c.ts ? new Date(c.ts) : null, rosterTs: c.rosterTs ? new Date(c.rosterTs) : (c.ts ? new Date(c.ts) : null), source: "cache", unlocked: Array.isArray(c.registrations) });
+    Object.assign(state, { counts: canonCounts(c.counts), registrations: canonRegistrations(c.registrations) || null, agg: c.agg || null, ts: c.ts ? new Date(c.ts) : null, rosterTs: c.rosterTs ? new Date(c.rosterTs) : (c.ts ? new Date(c.ts) : null), source: "cache", unlocked: Array.isArray(c.registrations) });
     return true;
   } catch(e){ return false; }
 }
 
 /* 以公開統計更新人數與圖表；已載入過的名單保留（名單標題會註明名單時間），不顯示任何警告 */
 function applyStats(st, source){
-  state.counts = st.counts; state.limits = st.limits || state.limits; state.quotaScope = st.quotaScope;
+  state.counts = st.counts;
   state.agg = st.agg;
   state.unlocked = Array.isArray(state.registrations);
   state.ts = new Date(); state.source = source;
@@ -511,9 +496,7 @@ async function load(){
       throw new Error("dashboard response without registrations");
     }
     state.counts = canonCounts(data.counts);
-    state.limits = data.limits ? canonKeys(data.limits) : null;
-    mergeSessionLimits(data.sessionLimits);
-    state.quotaScope = data.quotaScope || "session";
+    mergeSessionCaps(data.sessionCaps);
     state.ts = new Date();
     state.source = "api";
     ok = true;
@@ -571,14 +554,13 @@ function render(){
   renderStack();
   renderMatrix();
   renderDetail();
-  $("#scopeText").textContent = state.quotaScope === "total" ? "三梯次共用名額"
-    : "各梯次名額：" + SESSIONS.map(s => `${s.key} ${sessionLimit(s.key)} 人`).join("・");
+  $("#scopeText").textContent = "各梯次報名人數上限（不分身分）：" + SESSIONS.map(s => `${s.key} ${sessionLimit(s.key)} 人`).join("・");
 }
 
 function renderKpis(){
   const totalLimit = totalLimitAll();
   const total = SESSIONS.reduce((n, s) => n + sessionTotal(s.key), 0);
-  const fullCells = SESSIONS.flatMap(s => IDENTITIES.filter(i => used(s.key, i.key) >= limitOf(i.key, s.key)));
+  const fullSessions = SESSIONS.filter(s => sessionTotal(s.key) >= sessionLimit(s.key));
   const pct = totalLimit ? Math.round(total / totalLimit * 100) : 0;
   const busiest = [...SESSIONS].sort((a, b) => sessionTotal(b.key) - sessionTotal(a.key))[0];
   let veg = null, vegPct = null, meat = 0;
@@ -590,7 +572,7 @@ function renderKpis(){
   $("#kpis").innerHTML = `
     <div class="kpi" style="--k:var(--brick)"><div class="label">總報名人數</div><div class="value">${total}<small>／ ${totalLimit} 名</small></div><div class="foot">整體額滿率 ${pct}%</div></div>
     <div class="kpi" style="--k:var(--s-mpgy)"><div class="label">剩餘名額</div><div class="value">${Math.max(0, totalLimit - total)}<small>名</small></div><div class="foot">${SESSIONS.map(s => `${s.key.replace("梯次","")} ${Math.max(0, sessionLimit(s.key) - sessionTotal(s.key))}`).join("・")}</div></div>
-    <div class="kpi" style="--k:var(--s-teacher)"><div class="label">已額滿的梯次身分</div><div class="value">${fullCells.length}<small>／ ${SESSIONS.length * IDENTITIES.length} 組</small></div><div class="foot">報名最踴躍：${busiest.key}（${sessionTotal(busiest.key)} 人）</div></div>
+    <div class="kpi" style="--k:var(--s-teacher)"><div class="label">已額滿梯次</div><div class="value">${fullSessions.length}<small>／ ${SESSIONS.length} 梯次</small></div><div class="foot">報名最踴躍：${busiest.key}（${sessionTotal(busiest.key)} 人）</div></div>
     <div class="kpi" style="--k:var(--s-ugy)"><div class="label">素食人數</div><div class="value">${veg === null ? "－" : veg}<small>${veg === null ? "" : "人"}</small></div><div class="foot">${veg === null ? "名單資料載入後顯示" : `占 ${vegPct}%・葷食 ${meat} 人`}</div></div>`;
 }
 
@@ -598,8 +580,8 @@ function renderSessions(){
   $("#sessions").innerHTML = SESSIONS.map(s => {
     const total = sessionTotal(s.key);
     const left = Math.max(0, sessionLimit(s.key) - total);
-    const isFull = IDENTITIES.every(i => used(s.key, i.key) >= limitOf(i.key, s.key));
-    const badge = isFull ? `<span class="badge full">● 全部額滿</span>` : left <= 5 ? `<span class="badge warn">▲ 剩 ${left} 名</span>` : `<span class="badge ok">✓ 開放報名</span>`;
+    const isFull = total >= sessionLimit(s.key);
+    const badge = isFull ? `<span class="badge full">● 額滿</span>` : left <= 5 ? `<span class="badge warn">▲ 剩 ${left} 名</span>` : `<span class="badge ok">✓ 開放報名</span>`;
     let meals = "";
     if (state.agg && state.agg.meals[s.key]){
       const m = state.agg.meals[s.key];
@@ -610,16 +592,11 @@ function renderSessions(){
         <h3>${s.key} <small>${s.date}</small></h3>
         <div class="session-total"><b>${total}</b><span>／ ${sessionLimit(s.key)} 人</span>${badge}</div>
         <div class="rows">${IDENTITIES.map(i => {
-          const u = used(s.key, i.key), lim = limitOf(i.key, s.key), pct = lim ? Math.min(100, Math.round(u / lim * 100)) : 0;
-          if (lim === 0) return `<div class="row" data-tip="${esc(s.key)}｜${esc(i.key)}：額滿">
+          const u = used(s.key, i.key), cap = sessionLimit(s.key), pct = cap ? Math.min(100, Math.round(u / cap * 100)) : 0;
+          return `<div class="row" data-tip="${esc(s.key)}｜${esc(i.key)}：已報名 ${u} 人（不分身分，梯次上限 ${cap} 人）">
             <span class="name"><span class="swatch" style="--c:${i.color}"></span><span>${i.key.split("/").map(p => `<span class="nw">${p}</span>`).join("/<wbr>")}</span></span>
-            <span class="track full" style="--c:${i.color}"><i style="width:100%"></i></span>
-            <span class="num"><b>額滿</b></span>
-          </div>`;
-          return `<div class="row" data-tip="${esc(s.key)}｜${esc(i.key)}：已報名 ${u} 人，剩餘 ${Math.max(0, lim - u)} 名（限額 ${lim}）">
-            <span class="name"><span class="swatch" style="--c:${i.color}"></span><span>${i.key.split("/").map(p => `<span class="nw">${p}</span>`).join("/<wbr>")}</span></span>
-            <span class="track ${u >= lim ? "full" : ""}" style="--c:${i.color}"><i style="width:${pct}%"></i></span>
-            <span class="num"><b>${u}</b>／${lim}${u >= lim ? " 滿" : ""}</span>
+            <span class="track" style="--c:${i.color}"><i style="width:${pct}%"></i></span>
+            <span class="num"><b>${u}</b> 人</span>
           </div>`;
         }).join("")}</div>
         ${meals}
@@ -642,7 +619,7 @@ function renderStack(){
     const cy = padT + rowH * r + rowH / 2;
     // 每個梯次各自的總名額虛線
     const lim = sessionLimit(s.key);
-    svg += `<line x1="${x(lim)}" y1="${cy - barH / 2 - 6}" x2="${x(lim)}" y2="${cy + barH / 2 + 6}" stroke="#b4432f" stroke-width="1.5" stroke-dasharray="4 3"><title>${esc(s.key)} 總名額 ${lim} 人</title></line>`;
+    svg += `<line x1="${x(lim)}" y1="${cy - barH / 2 - 6}" x2="${x(lim)}" y2="${cy + barH / 2 + 6}" stroke="#b4432f" stroke-width="1.5" stroke-dasharray="4 3"><title>${esc(s.key)} 報名人數上限 ${lim} 人</title></line>`;
     svg += `<text x="${padL - 10}" y="${cy + 4}" font-size="12" fill="#2b2a28" text-anchor="end" font-weight="500">${s.key}</text>`;
     let acc = 0;
     IDENTITIES.forEach((i, k) => {
@@ -650,7 +627,7 @@ function renderStack(){
       if (!u) return;
       const x0 = x(acc), x1 = x(acc + u), w = Math.max(0, x1 - x0 - 2);
       const last = k === IDENTITIES.length - 1 || IDENTITIES.slice(k + 1).every(j => !used(s.key, j.key));
-      svg += `<rect class="mark" x="${x0}" y="${cy - barH / 2}" width="${w}" height="${barH}" fill="${i.hex}" rx="${last ? 4 : 0}" data-tip="${esc(s.key)}｜${esc(i.key)}：${u} 人（限額 ${limitOf(i.key, s.key)}）"/>`;
+      svg += `<rect class="mark" x="${x0}" y="${cy - barH / 2}" width="${w}" height="${barH}" fill="${i.hex}" rx="${last ? 4 : 0}" data-tip="${esc(s.key)}｜${esc(i.key)}：${u} 人"/>`;
       if (w > 18) svg += `<text x="${x0 + w / 2}" y="${cy + 4}" font-size="11" fill="#fff" text-anchor="middle" font-weight="700" pointer-events="none">${u}</text>`;
       acc += u;
     });
@@ -663,15 +640,13 @@ function renderStack(){
 function renderMatrix(){
   const head = `<tr><th>身分</th>${SESSIONS.map(s => `<th class="num">${s.key}<br><small>${s.short}</small></th>`).join("")}<th class="num">合計</th></tr>`;
   const body = IDENTITIES.map(i => {
-    let sum = 0, limSum = 0;
+    let sum = 0;
     const cells = SESSIONS.map(s => {
-      const lim = limitOf(i.key, s.key);
-      const u = used(s.key, i.key); sum += u; limSum += lim;
-      const pct = lim ? Math.min(100, Math.round(u / lim * 100)) : 0;
-      if (lim === 0) return `<td class="num"><span class="cell full" style="--c:${i.color}"><span class="mini"><i style="width:100%"></i></span>額滿</span></td>`;
-      return `<td class="num"><span class="cell ${u >= lim ? "full" : ""}" style="--c:${i.color}"><span class="mini"><i style="width:${pct}%"></i></span>${u}／${lim}</span></td>`;
+      const u = used(s.key, i.key), cap = sessionLimit(s.key); sum += u;
+      const pct = cap ? Math.min(100, Math.round(u / cap * 100)) : 0;
+      return `<td class="num"><span class="cell" style="--c:${i.color}"><span class="mini"><i style="width:${pct}%"></i></span>${u}</span></td>`;
     }).join("");
-    return `<tr><td><span class="chip"><span class="swatch" style="--c:${i.color}"></span>${i.key}</span></td>${cells}<td class="num">${sum}／${limSum}</td></tr>`;
+    return `<tr><td><span class="chip"><span class="swatch" style="--c:${i.color}"></span>${i.key}</span></td>${cells}<td class="num">${sum}</td></tr>`;
   }).join("");
   const totalRow = `<tr class="total"><td>合計</td>${SESSIONS.map(s => `<td class="num">${sessionTotal(s.key)}／${sessionLimit(s.key)}</td>`).join("")}<td class="num">${SESSIONS.reduce((n, s) => n + sessionTotal(s.key), 0)}／${totalLimitAll()}</td></tr>`;
   $("#matrix").innerHTML = head + body + totalRow;

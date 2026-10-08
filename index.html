@@ -437,9 +437,10 @@ section.block{padding:4.5rem 0}
 }
 .quota-card .q-name{font-family:var(--serif);font-weight:700;font-size:1.15rem;color:#1f3a3d;flex:1 0 auto}
 .nw{white-space:nowrap}
-.quota-card .q-num{display:flex;align-items:baseline;gap:.35rem;margin:.5rem 0 .3rem}
-.quota-card .q-num b{font-family:var(--serif);font-size:2.4rem;color:var(--q-color,var(--brick));line-height:1}
-.quota-card .q-num span{color:var(--ink-soft);font-size:.9rem}
+.quota-card .q-status{
+  align-self:flex-start;margin-top:.7rem;padding:.3rem .9rem;border-radius:999px;font-weight:700;font-size:.95rem;
+  color:var(--q-color,var(--brick));background:color-mix(in srgb,var(--q-color,var(--brick)) 12%,#fff);
+}
 .bar{height:10px;border-radius:999px;background:var(--rice);overflow:hidden;border:1px solid var(--line)}
 .bar i{display:block;height:100%;background:var(--q-color,var(--brick));width:0;transition:width .8s cubic-bezier(.2,.8,.2,1)}
 .q-foot{display:flex;justify-content:space-between;font-size:.8rem;color:var(--ink-soft);margin-top:.4rem}
@@ -449,8 +450,7 @@ section.block{padding:4.5rem 0}
   border:3px solid var(--vermilion);padding:.2rem 1rem;border-radius:8px;transform:rotate(-8deg);letter-spacing:.2em;
 }
 .quota-card.is-full .q-full{display:grid}
-.quota-card.is-loading .q-num b{color:#cfc5b1}
-.quota-card.is-loading .bar{background:linear-gradient(90deg,var(--rice) 25%,#efe4cc 50%,var(--rice) 75%);background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+.quota-card.is-loading .q-status{color:#a59a86;background:var(--rice)}
 @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
 .live{display:flex;justify-content:center;align-items:center;gap:.5rem;margin-top:1.4rem;font-size:.85rem;color:var(--ink-soft)}
 .pulse{width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 1.6s ease-in-out infinite}
@@ -1051,7 +1051,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
           <h4>參加對象</h4>
           <p>西醫UGY/醫事職類UGY・西醫PGY</p>
           <p>醫事職類PGY・臨床教師</p>
-          <p class="muted">額滿為止，名額即時顯示於報名表。</p>
+          <p class="muted">額滿為止，報名狀態即時顯示於報名表。</p>
         </div>
       </div>
       <div class="info-card">
@@ -1213,7 +1213,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
     <div class="section-head">
       <span class="kicker">QUOTA</span>
       <h2>報名名額即時查詢</h2>
-      <p>三梯次分別計算名額，各身分別採限額報名，額滿即關閉該梯次該身分之報名。請點選梯次查看剩餘名額。</p>
+      <p>三梯次分別計算報名人數，各身分皆可報名，額滿即關閉該梯次之報名。請點選梯次查看報名狀態。</p>
     </div>
     <div class="seg" id="quotaSessions" role="group" aria-label="選擇梯次"></div>
     <div class="quota-grid" id="quotaGrid"></div>
@@ -1247,7 +1247,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
           <select id="identity" name="identity" required disabled>
             <option value="" disabled selected>請先選擇梯次</option>
           </select>
-          <span class="hint">下拉選單即時顯示所選梯次各身分剩餘名額。</span>
+          <span class="hint">下拉選單即時顯示所選梯次是否尚可報名。</span>
           <span class="err">請選擇身分。</span>
         </div>
 
@@ -1381,13 +1381,12 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
    設定：後端 API（Google Apps Script 網頁應用程式）
    - 部署 apps-script/Code.gs 後，將「網頁應用程式網址」貼入 API_URL。
    - API_URL 留空時為「示範模式」：名額計數僅存於此瀏覽器 (localStorage)。
-   - QUOTA_SCOPE："session" = 各梯次分別計算名額；"total" = 三梯次共用名額。
+   - 名額：只有各梯次總報名人數上限（SESSION_CAPS），不分身分；未達上限時各身分皆顯示「尚可報名」。
    ===================================================================== */
 const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzF7cY4JwKRJhmY_6AQ6i5smlcbtUwHmD6I_LBKAIyE4gzxDNL9Bcltu5pRIjy7iYYNZQ/exec",
   POLL_MS: 60000,              // 每位訪客每 60 秒更新一次（頁面在背景時暫停），減輕 Apps Script 負載
   FETCH_TIMEOUT_MS: 25000,     // Apps Script 逾時秒數；名額已先由保存資料或公開統計顯示，所以可以多等一點
-  QUOTA_SCOPE: "session",
   // 備援：公開統計試算表（只含人數統計，不含個資）。開頁時先讀它快速顯示名額，Apps Script 慢或無回應時也用它
   STATS_SPREADSHEET_ID: "1YAOD-_eKqRTBhFlqNv6iankT-seh4IRktsSWMSSRHiE",
   STATS_SHEET: "統計",
@@ -1400,17 +1399,14 @@ const SESSIONS = [
   { key: "第三梯次", date: "115/11/21（六）–11/22（日）", short: "11/21–11/22" }
 ];
 const IDENTITIES = [
-  { key: "西醫UGY/醫事職類UGY", limit: 8,  color: "#5a7a3c" },
-  { key: "西醫PGY",     limit: 10, color: "#c25d3b" },
-  { key: "醫事職類PGY", limit: 9,  color: "#3f6f86" },
-  { key: "臨床教師",    limit: 8,  color: "#a7781f" }
+  { key: "西醫UGY/醫事職類UGY", color: "#5a7a3c" },
+  { key: "西醫PGY",     color: "#c25d3b" },
+  { key: "醫事職類PGY", color: "#3f6f86" },
+  { key: "臨床教師",    color: "#a7781f" }
 ];
-// 各梯次限額（2026-09-30：第二、第三梯次臨床教師 9 人；2026-10-05：第一梯次改為 UGY 8、PGY 4、醫事職類PGY 0、臨床教師 23；2026-10-06：第二梯次 PGY 0、臨床教師 19，第三梯次 PGY 4、臨床教師 15；2026-10-07：第三梯次改為 UGY 5、PGY 4、醫事職類PGY 6、臨床教師 21）。限額 0 一律顯示為「額滿」。載入名額後以後端回傳的 sessionLimits 為準
-let SESSION_LIMITS = {
-  "第一梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 4, "醫事職類PGY": 0, "臨床教師": 23 },
-  "第二梯次": { "西醫UGY/醫事職類UGY": 8, "西醫PGY": 0, "醫事職類PGY": 9, "臨床教師": 19 },
-  "第三梯次": { "西醫UGY/醫事職類UGY": 5, "西醫PGY": 4, "醫事職類PGY": 6, "臨床教師": 21 }
-};
+// 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限）。
+// 網頁不顯示上限與剩餘人數；載入名額後以後端回傳的 sessionCaps（或公開統計的「梯次上限」）為準
+let SESSION_CAPS = { "第一梯次": 35, "第二梯次": 36, "第三梯次": 36 };
 // 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
 // 既有報名資料、公開統計與尚未重新部署的後端仍可能使用舊名稱，讀取時一律換成新名稱。
 const IDENTITY_ALIASES = { "西醫UGY": "西醫UGY/醫事職類UGY" };
@@ -1421,19 +1417,9 @@ function canonIdentity(k){
 function legacyIdentity(k){
   return Object.keys(IDENTITY_ALIASES).find(old => IDENTITY_ALIASES[old] === k) || "";
 }
-function limitOf(identity, session){
-  const s = SESSION_LIMITS[session];
-  if (CONFIG.QUOTA_SCOPE !== "total" && s && s[identity] != null) return Number(s[identity]);
-  const item = IDENTITIES.find(i => i.key === identity);
-  return item ? item.limit : 0;
-}
-function mergeSessionLimits(src){
+function mergeSessionCaps(src){
   if (!src) return;
-  Object.keys(src).forEach(s => {
-    const lim = {};
-    Object.keys(src[s] || {}).forEach(k => { lim[canonIdentity(k)] = src[s][k]; });
-    SESSION_LIMITS[s] = Object.assign({}, SESSION_LIMITS[s] || {}, lim);
-  });
+  Object.keys(src).forEach(s => { if (Number(src[s]) > 0) SESSION_CAPS[s] = Number(src[s]); });
 }
 const LS_KEY = "tainan360_demo_registrations";
 
@@ -1544,14 +1530,14 @@ function parseCsv(text){
 }
 function countsFromStatsRows(rows){
   if (!rows.length || String(rows[0][0]).trim() !== "類型") throw new Error("統計資料格式不符");
-  const c = emptyCounts(), limits = {}; let updated = "";
+  const c = emptyCounts(), caps = {}; let updated = "";
   rows.slice(1).forEach(([type, k1, k2, v, ts]) => {
     k2 = canonIdentity(k2);
     if (type === "名額" && c[k1] && c[k1][k2] !== undefined) c[k1][k2] += Number(v) || 0;
-    if (type === "梯次限額" && k1 && k2 && v !== "") { (limits[k1] = limits[k1] || {})[k2] = Number(v); }
+    if (type === "梯次上限" && k1 && v !== "") caps[k1] = Number(v);
     if (ts) updated = ts;
   });
-  mergeSessionLimits(limits);
+  mergeSessionCaps(caps);
   const t = updated ? new Date(updated.replace(/-/g, "/")) : null;
   return { counts: c, time: (t && !isNaN(t)) ? t : null };
 }
@@ -1618,7 +1604,7 @@ async function fetchCounts(){
     const data = await res.json();
     if (!data || !data.counts) throw new Error("名額資料格式不符");
     apiDone = true;
-    mergeSessionLimits(data.sessionLimits);
+    mergeSessionCaps(data.sessionCaps);
     setCounts(applyCounts(data.counts), "api");
     backendOnline = true;
   } catch(err){
@@ -1637,48 +1623,40 @@ async function fetchCounts(){
   renderQuota();
 }
 
-function used(identity, session){
-  if (CONFIG.QUOTA_SCOPE === "total"){
-    return SESSIONS.reduce((n, s) => n + (counts[s.key][identity] || 0), 0);
-  }
-  return (counts[session] && counts[session][identity]) || 0;
+/** 某梯次已報名總人數、是否額滿（不分身分） */
+function sessionTotal(session){
+  const c = counts[session] || {};
+  return IDENTITIES.reduce((n, i) => n + (c[i.key] || 0), 0);
 }
-function remaining(identity, session){
-  if (!IDENTITIES.some(i => i.key === identity)) return 0;
-  return Math.max(0, limitOf(identity, session) - used(identity, session));
+function sessionFull(session){
+  return countsSource !== "" && !!SESSION_CAPS[session] && sessionTotal(session) >= SESSION_CAPS[session];
 }
 
 /* ---------- 名額：畫面 ---------- */
 function renderQuota(){
-  // 梯次切換鈕
+  // 梯次切換鈕（額滿的梯次標示「已額滿」）
   const seg = document.getElementById("quotaSessions");
   seg.innerHTML = SESSIONS.map(s => `
     <button type="button" class="seg-btn" data-session="${s.key}" aria-pressed="${s.key === quotaView}">
-      <b>${s.key}</b><small>${s.short}</small>
+      <b>${s.key}</b><small>${sessionFull(s.key) ? "已額滿" : s.short}</small>
     </button>`).join("");
   seg.querySelectorAll(".seg-btn").forEach(btn => btn.addEventListener("click", () => {
     quotaView = btn.dataset.session;
     renderQuota();
   }));
 
-  const known = countsSource !== "";   // 尚未取得任何名額資料時，不顯示數字，避免誤以為名額全空
+  // 身分卡片：不顯示剩餘人數；梯次未額滿時各身分皆「尚可報名」，額滿時全部蓋「額滿」章
+  const known = countsSource !== "";   // 尚未取得任何名額資料時顯示「載入中」，避免誤以為名額全空
+  const full = sessionFull(quotaView);
   const grid = document.getElementById("quotaGrid");
-  grid.innerHTML = IDENTITIES.map(i => {
-    const left = remaining(i.key, quotaView);
-    const lim = limitOf(i.key, quotaView);
-    const usedN = lim - left;
-    const pct = known && lim ? Math.round(usedN / lim * 100) : 0;
-    const closed = lim === 0;          // 限額 0：不必等名額載入，直接顯示額滿
-    return `
-      <div class="quota-card ${closed || (known && left === 0) ? "is-full" : ""} ${known || closed ? "" : "is-loading"}" style="--q-color:${i.color}">
+  grid.innerHTML = IDENTITIES.map(i => `
+      <div class="quota-card ${full ? "is-full" : ""} ${known ? "" : "is-loading"}" style="--q-color:${i.color}">
         <div class="q-name">${i.key.split("/").map(p => `<span class="nw">${p}</span>`).join("/<wbr>")}</div>
-        <div class="q-num"><b>${closed ? 0 : known ? left : "–"}</b><span>${closed || known ? "名 尚可報名" : "名額載入中…"}</span></div>
-        <div class="bar"><i style="width:${pct}%"></i></div>
+        <div class="q-status">${!known ? "名額載入中…" : full ? "已額滿" : "尚可報名"}</div>
         <div class="q-full"><span>額滿</span></div>
-      </div>`;
-  }).join("");
+      </div>`).join("");
 
-  // 身分下拉選單：依表單所選梯次即時顯示剩餘名額
+  // 身分下拉選單：依表單所選梯次顯示「尚可報名」或「已額滿」
   const sessionSel = document.getElementById("session");
   const sel = document.getElementById("identity");
   const current = sel.value;
@@ -1688,15 +1666,21 @@ function renderQuota(){
     sel.innerHTML = `<option value="" disabled selected>請先選擇梯次</option>`;
   } else {
     sel.disabled = false;
-    sel.innerHTML = `<option value="" disabled ${current ? "" : "selected"}>請選擇身分（顯示剩餘名額）</option>` +
+    const sFull = sessionFull(session);
+    sel.innerHTML = `<option value="" disabled ${current ? "" : "selected"}>請選擇身分</option>` +
       IDENTITIES.map(i => {
-        const left = remaining(i.key, session);
-        const closed = limitOf(i.key, session) === 0;
-        const full = closed || (known && left === 0);
-        const label = closed ? `${i.key}（已額滿）` : !known ? `${i.key}（名額載入中）` : full ? `${i.key}（已額滿）` : `${i.key}（剩餘 ${left} 名）`;
-        return `<option value="${i.key}" ${full ? "disabled" : ""} ${current === i.key && !full ? "selected" : ""}>${label}</option>`;
+        const label = !known ? `${i.key}（名額載入中）` : sFull ? `${i.key}（已額滿）` : `${i.key}（尚可報名）`;
+        return `<option value="${i.key}" ${sFull ? "disabled" : ""} ${current === i.key && !sFull ? "selected" : ""}>${label}</option>`;
       }).join("");
   }
+  // 梯次下拉選單：額滿的梯次標示「（已額滿）」並停用
+  Array.from(sessionSel.options).forEach(o => {
+    const s = SESSIONS.find(x => x.key === o.value);
+    if (!s) return;
+    const f = sessionFull(s.key);
+    o.textContent = `${s.key}｜${s.date}${f ? "（已額滿）" : ""}`;
+    o.disabled = f;
+  });
 
   const pulse = document.getElementById("livePulse");
   const text = document.getElementById("liveText");
@@ -1749,9 +1733,9 @@ function setInvalid(el, bad){
 function validateForm(){
   let ok = true;
   const f = document.getElementById("regForm");
-  ok = setInvalid(f.session, !f.session.value) && ok;
+  ok = setInvalid(f.session, !f.session.value || sessionFull(f.session.value)) && ok;
   const identity = f.identity;
-  ok = setInvalid(identity, !identity.value || remaining(identity.value, f.session.value) === 0) && ok;
+  ok = setInvalid(identity, !identity.value) && ok;
   ["unit","name","title","phone"].forEach(n => { ok = setInvalid(f[n], !f[n].value.trim()) && ok; });
   ok = setInvalid(f.empId, !normalizeId(f.empId.value)) && ok;
   ok = setInvalid(f.email, !f.email.value.trim() || !f.email.checkValidity()) && ok;
@@ -1803,7 +1787,7 @@ async function submitRegistration(payload){
   if (!CONFIG.API_URL){
     // 示範模式：寫入 localStorage
     await new Promise(r => setTimeout(r, 500));
-    if (remaining(payload.identity, payload.session) === 0) return { ok: false, error: "full" };
+    if (sessionFull(payload.session)) return { ok: false, error: "full" };
     let list = [];
     try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch(e){}
     const sameEmp = r => normalizeId(r.empId) === normalizeId(payload.empId);
@@ -1890,7 +1874,7 @@ document.getElementById("regForm").addEventListener("submit", async e => {
     } else {
       msg.className = "form-msg error";
       const errMap = {
-        full: "很抱歉，該梯次此身分名額已額滿，請改選其他梯次或洽教學部詢問候補。",
+        full: "很抱歉，該梯次報名人數已額滿，請改選其他梯次或洽教學部詢問候補。",
         duplicate: "您已完成報名，每人限報名一個梯次；如需更改梯次請聯絡教學部（分機 57440）。",
         invalid: "資料格式不正確，請檢查後重新送出。"
       };
