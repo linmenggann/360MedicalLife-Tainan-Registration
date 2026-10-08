@@ -1140,7 +1140,7 @@ function openStaffSpreadsheet_(ui, askAlways) {
  * - 身分保留「長官」「工作人員」；統計時合併為「長官/工作人員」，計入各梯次總人數上限。
  * - 「通知寄送時間」填入匯入時間：報名成功／行前資訊已另行寄送，背景作業不會再寄。
  * - 同梯次已有相同人事號或身分證號的資料會略過，可以重複執行。
- * - 不放進公開的問卷查詢名單，也不能填寫活動滿意度調查。
+ * - 和學員一樣出現在公開的問卷查詢名單，也能填寫活動滿意度調查（使用者 2026-10-08 要求）。
  * - 名單試算表的「活動報名資料」分頁只用來核對（與三個梯次分頁的人是否一致），不另外匯入，避免重複。
  */
 function importStaffRegistrationsDialog() {
@@ -1425,7 +1425,7 @@ function publishSurveyLookup_(stats, rows, now) {
     const sh = ss_().getSheetByName(SURVEY_SHEETS[s]);
     if (sh) surveyEntries_(sh).forEach(x => { if (x.empId && !done[s + '|' + x.empId]) done[s + '|' + x.empId] = x.no || '已填寫'; });
   });
-  const out = registrationsFromRows_(rows).filter(r => !isStaff_(r.identity)).map(r => [   // 長官及工作人員不放進公開名單
+  const out = registrationsFromRows_(rows).map(r => [   // 含長官及工作人員（使用者 2026-10-08 同意公開）
     r.empId, r.session, canonIdentity_(r.identity), r.unit, r.name, r.title, done[r.session + '|' + r.empId] || '', now
   ]);
   sheet.clearContents();
@@ -1547,7 +1547,7 @@ function findRegistration_(session, empId, rows) {
   return { record: record, otherSessions: otherSessions };
 }
 
-/** 問卷用的報名名單（同儀表板名單格式，不含長官及工作人員）；優先用快取，沒有快取才讀試算表 */
+/** 問卷用的報名名單（同儀表板名單格式，含長官及工作人員）；優先用快取，沒有快取才讀試算表 */
 function registrationList_(fresh) {
   let list = null;
   if (!fresh) {
@@ -1555,7 +1555,7 @@ function registrationList_(fresh) {
     if (cached && Array.isArray(cached.registrations)) list = cached.registrations;
   }
   if (!list) list = registrationsFromRows_(readMaster_(getSheet_(MASTER_SHEET)));
-  return list.filter(r => !isStaff_(r.identity));
+  return list;
 }
 
 /** 此分頁已有的填寫紀錄：[{ no, empId, id, row }] */
