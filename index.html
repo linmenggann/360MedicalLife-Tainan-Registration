@@ -1404,9 +1404,12 @@ const IDENTITIES = [
   { key: "醫事職類PGY", color: "#3f6f86" },
   { key: "臨床教師",    color: "#a7781f" }
 ];
-// 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限）。
+// 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；統一 40 人，包含長官及工作人員）。
 // 網頁不顯示上限與剩餘人數；載入名額後以後端回傳的 sessionCaps（或公開統計的「梯次上限」）為準
-let SESSION_CAPS = { "第一梯次": 35, "第二梯次": 36, "第三梯次": 36 };
+let SESSION_CAPS = { "第一梯次": 40, "第二梯次": 40, "第三梯次": 40 };
+// 長官及工作人員：不在身分選單，但計入各梯次總人數（後端與公開統計的人數裡有這一項）
+const STAFF_GROUP = "長官/工作人員";
+const COUNTED = [STAFF_GROUP].concat(IDENTITIES.map(i => i.key));
 // 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
 // 既有報名資料、公開統計與尚未重新部署的後端仍可能使用舊名稱，讀取時一律換成新名稱。
 const IDENTITY_ALIASES = { "西醫UGY": "西醫UGY/醫事職類UGY" };
@@ -1424,7 +1427,7 @@ function mergeSessionCaps(src){
 const LS_KEY = "tainan360_demo_registrations";
 
 function emptyCounts(){
-  return Object.fromEntries(SESSIONS.map(s => [s.key, Object.fromEntries(IDENTITIES.map(i => [i.key, 0]))]));
+  return Object.fromEntries(SESSIONS.map(s => [s.key, Object.fromEntries(COUNTED.map(k => [k, 0]))]));
 }
 let counts = emptyCounts();
 let backendOnline = false;
@@ -1626,7 +1629,7 @@ async function fetchCounts(){
 /** 某梯次已報名總人數、是否額滿（不分身分） */
 function sessionTotal(session){
   const c = counts[session] || {};
-  return IDENTITIES.reduce((n, i) => n + (c[i.key] || 0), 0);
+  return COUNTED.reduce((n, k) => n + (c[k] || 0), 0);      // 含長官及工作人員
 }
 function sessionFull(session){
   return countsSource !== "" && !!SESSION_CAPS[session] && sessionTotal(session) >= SESSION_CAPS[session];

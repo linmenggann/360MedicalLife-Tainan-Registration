@@ -17,7 +17,7 @@
   --ink:#2b2a28;--ink-soft:#5f5a53;--ink-muted:#8a847a;
   --green:#3e7c59;
   /* 圖表色（依身分固定順序，已通過色盲/對比驗證） */
-  --s-ugy:#3a8a5c;--s-pgy:#d24a2e;--s-mpgy:#2f6db5;--s-teacher:#c9880c;
+  --s-staff:#6f5a99;--s-ugy:#3a8a5c;--s-pgy:#d24a2e;--s-mpgy:#2f6db5;--s-teacher:#c9880c;
   --ok:#2f7a4a;--warn:#b7791f;--full:#b3261e;
   --shadow:0 8px 24px rgba(74,43,26,.10);
   --serif:"Noto Serif TC","PingFang TC","Microsoft JhengHei",serif;
@@ -247,14 +247,17 @@ const SESSIONS = [
   { key: "第二梯次", date: "115/11/14（六）–11/15（日）", short: "11/14–11/15" },
   { key: "第三梯次", date: "115/11/21（六）–11/22（日）", short: "11/21–11/22" }
 ];
+// 「長官/工作人員」：不在報名網頁的身分選單，由後端選單匯入；身分欄是「長官」或「工作人員」，統計時合併
 const IDENTITIES = [
+  { key: "長官/工作人員", color: "var(--s-staff)", hex: "#6f5a99" },
   { key: "西醫UGY/醫事職類UGY", color: "var(--s-ugy)",     hex: "#3a8a5c" },
   { key: "西醫PGY",     color: "var(--s-pgy)",     hex: "#d24a2e" },
   { key: "醫事職類PGY", color: "var(--s-mpgy)",    hex: "#2f6db5" },
   { key: "臨床教師",    color: "var(--s-teacher)", hex: "#c9880c" }
 ];
-// 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限）。載入後以後端或公開統計回傳的值為準
-const SESSION_CAPS = { "第一梯次": 35, "第二梯次": 36, "第三梯次": 36 };
+// 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；統一 40 人，包含長官及工作人員）。
+// 載入後以後端或公開統計回傳的值為準
+const SESSION_CAPS = { "第一梯次": 40, "第二梯次": 40, "第三梯次": 40 };
 // 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
 // 既有報名資料、公開統計、本機快取與尚未重新部署的後端仍可能使用舊名稱，讀取時一律換成新名稱。
 const IDENTITY_ALIASES = { "西醫UGY": "西醫UGY/醫事職類UGY" };
@@ -262,6 +265,9 @@ function canonIdentity(k){
   k = String(k ?? "").trim();
   return IDENTITY_ALIASES[k] || k;
 }
+/** 名單中的身分 → 統計列（長官、工作人員 → 長官/工作人員）；名單本身仍顯示原本的身分 */
+const STAFF_SET = ["長官", "工作人員", "長官/工作人員"];
+const groupOf = id => STAFF_SET.includes(canonIdentity(id)) ? "長官/工作人員" : canonIdentity(id);
 /** 以身分為鍵的人數物件換成新名稱；sum＝同一身分新舊名稱並存時相加 */
 function canonKeys(obj, sum){
   const out = {};
@@ -714,11 +720,13 @@ function fillFilters(){
   if (fs.options.length === 1) SESSIONS.forEach(s => fs.add(new Option(s.key, s.key)));
   if (fi.options.length === 1) IDENTITIES.forEach(i => fi.add(new Option(i.key, i.key)));
 }
+// 沒有報名時間（例如匯入的長官及工作人員）排在最後
+const tsValue = r => { const t = new Date(r.ts).getTime(); return isNaN(t) ? 0 : t; };
 function filteredRoster(){
   const s = $("#fSession").value, i = $("#fIdentity").value, m = $("#fMeal").value, q = $("#fSearch").value.trim().toLowerCase();
   return [...state.registrations]
-    .sort((a, b) => new Date(b.ts) - new Date(a.ts))
-    .filter(r => (!s || r.session === s) && (!i || r.identity === i) && (!m || r.meal === m) &&
+    .sort((a, b) => tsValue(b) - tsValue(a))
+    .filter(r => (!s || r.session === s) && (!i || groupOf(r.identity) === i) && (!m || r.meal === m) &&
       (!q || [r.name, r.unit, r.empId, r.title].some(v => String(v).toLowerCase().includes(q))));
 }
 function renderRoster(){
@@ -728,9 +736,9 @@ function renderRoster(){
   if (!rows.length){ $("#roster").innerHTML = `<tr><td colspan="8"><div class="empty">沒有符合條件的報名資料</div></td></tr>`; return; }
   $("#roster").innerHTML = `<tr><th>#</th><th>報名時間</th><th>梯次</th><th>身分</th><th>單位</th><th>姓名</th><th>人事號</th><th>職稱</th><th>餐食</th></tr>` +
     rows.map((r, k) => {
-      const i = IDENTITIES.find(x => x.key === r.identity);
+      const i = IDENTITIES.find(x => x.key === groupOf(r.identity));
       const d = new Date(r.ts);
-      return `<tr><td class="num">${k + 1}</td><td>${isNaN(d) ? esc(r.ts) : fmtTime(d)}</td><td>${esc(r.session)}</td><td><span class="chip"><span class="swatch" style="--c:${i ? i.color : "#999"}"></span>${esc(r.identity)}</span></td><td>${esc(r.unit)}</td><td>${esc(r.name)}</td><td>${esc(r.empId)}</td><td>${esc(r.title)}</td><td>${esc(r.meal)}</td></tr>`;
+      return `<tr><td class="num">${k + 1}</td><td>${isNaN(d) ? (r.ts ? esc(r.ts) : "—") : fmtTime(d)}</td><td>${esc(r.session)}</td><td><span class="chip"><span class="swatch" style="--c:${i ? i.color : "#999"}"></span>${esc(r.identity)}</span></td><td>${esc(r.unit)}</td><td>${esc(r.name)}</td><td>${esc(r.empId)}</td><td>${esc(r.title)}</td><td>${esc(r.meal)}</td></tr>`;
     }).join("");
 }
 ["fSession","fIdentity","fMeal"].forEach(id => $("#" + id).addEventListener("change", renderRoster));

@@ -38,9 +38,14 @@ const SESSION_DATES = {
 };
 // 身分清單（報名表的身分選項；2026-10-08 起不再分身分限額）
 const IDENTITIES = ['西醫UGY/醫事職類UGY', '西醫PGY', '醫事職類PGY', '臨床教師'];
-// 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；
-// 未達上限時各身分皆可報名）。index.html 與 dashboard.html 以後端回傳的 sessionCaps 為準
-const SESSION_CAPS = { '第一梯次': 35, '第二梯次': 36, '第三梯次': 36 };
+// 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；未達上限時各身分皆可報名）。
+// 2026-10-08 起統一 40 人，包含長官及工作人員。index.html 與 dashboard.html 以後端回傳的 sessionCaps 為準
+const SESSION_CAPS = { '第一梯次': 40, '第二梯次': 40, '第三梯次': 40 };
+// 長官及工作人員：不在報名網頁的身分選單，由選單「匯入長官及工作人員至報名資料」加入；
+// 身分欄保留「長官」「工作人員」，統計時合併為「長官/工作人員」並計入各梯次總人數
+const STAFF_GROUP = '長官/工作人員';
+const STAFF_IDENTITIES = ['長官', '工作人員', STAFF_GROUP];
+const COUNT_IDENTITIES = [STAFF_GROUP].concat(IDENTITIES);   // 統計用（含長官及工作人員）
 // 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
 // 試算表既有資料、舊版網頁送來的值仍可能是舊名稱：讀取、統計與寫入前一律換成新名稱。
 // 既有資料可用選單「身分名稱更新為新名稱」一次改寫。
@@ -49,9 +54,13 @@ function canonIdentity_(v) {
   const k = String(v == null ? '' : v).trim();
   return IDENTITY_ALIASES[k] || k;
 }
-/** 某梯次目前已報名總人數 */
+/** 是否為長官或工作人員 */
+function isStaff_(v) { return STAFF_IDENTITIES.indexOf(canonIdentity_(v)) !== -1; }
+/** 統計用的身分（長官、工作人員 → 長官/工作人員） */
+function countIdentity_(v) { return isStaff_(v) ? STAFF_GROUP : canonIdentity_(v); }
+/** 某梯次目前已報名總人數（含長官及工作人員） */
 function sessionTotal_(counts, session) {
-  return IDENTITIES.reduce((n, k) => n + ((counts[session] || {})[k] || 0), 0);
+  return COUNT_IDENTITIES.reduce((n, k) => n + ((counts[session] || {})[k] || 0), 0);
 }
 
 // 儀表板（dashboard.html）存取金鑰：需與 dashboard.html 的 CONFIG.DASHBOARD_KEY 相同；兩者皆留空則不檢查
@@ -173,6 +182,7 @@ function onOpen() {
     .addItem('補寄尚未通知的報名者', 'sendPendingNotifications')
     .addItem('預覽長官及工作人員通知信（寄給自己）', 'previewStaffNotificationDialog')
     .addItem('寄送長官及工作人員行前資訊', 'sendStaffNotificationsDialog')
+    .addItem('匯入長官及工作人員至報名資料', 'importStaffRegistrationsDialog')
     .addSeparator()
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
     .addSeparator()
@@ -221,7 +231,7 @@ function renameLegacyIdentities() {
 function showCounts() {
   const counts = getCounts_(getSheet_(MASTER_SHEET));
   const lines = SESSIONS.map(s => s + '（' + SESSION_DATES[s] + '）：' +
-    sessionTotal_(counts, s) + '/' + SESSION_CAPS[s] + ' 人（' + IDENTITIES.map(k => k + ' ' + counts[s][k]).join('、') + '）');
+    sessionTotal_(counts, s) + '/' + SESSION_CAPS[s] + ' 人（' + COUNT_IDENTITIES.map(k => k + ' ' + counts[s][k]).join('、') + '）');
   SpreadsheetApp.getUi().alert('各梯次已報名人數\n\n' + lines.join('\n'));
 }
 
@@ -244,7 +254,7 @@ function clearCache_() {
 /* ------------------------------------------------------------------ */
 function emptyCounts_() {
   const c = {};
-  SESSIONS.forEach(s => { c[s] = {}; IDENTITIES.forEach(k => c[s][k] = 0); });
+  SESSIONS.forEach(s => { c[s] = {}; COUNT_IDENTITIES.forEach(k => c[s][k] = 0); });
   return c;
 }
 
@@ -260,7 +270,7 @@ function readMaster_(master) {
 function countsFromRows_(rows) {
   const counts = emptyCounts_();
   rows.forEach(r => {
-    const s = String(r[COL['梯次'] - 1]).trim(), k = canonIdentity_(r[COL['身分'] - 1]);
+    const s = String(r[COL['梯次'] - 1]).trim(), k = countIdentity_(r[COL['身分'] - 1]);
     if (counts[s] && counts[s][k] !== undefined) counts[s][k]++;
   });
   return counts;
@@ -296,7 +306,8 @@ function countsPayload_(counts) {
   return {
     ok: true,
     counts: counts,
-    identities: IDENTITIES,
+    identities: IDENTITIES,                    // 報名網頁可選的身分
+    countedIdentities: COUNT_IDENTITIES,       // counts 裡的身分（含長官/工作人員）
     sessionCaps: SESSION_CAPS,                 // 各梯次總報名人數上限（不分身分）
     sessions: SESSIONS,
     statsSpreadsheetId: PropertiesService.getScriptProperties().getProperty(STATS_PROP) || '',
@@ -1003,7 +1014,7 @@ function adminAddSessions(empId, targetSessions) {
 
       appendRow_(master, row);
       appendRow_(getSheet_(s), row);
-      counts[s][identity]++;
+      counts[s][countIdentity_(identity)]++;
       has.push(s);
       added.push(s);
     });
@@ -1118,6 +1129,123 @@ function openStaffSpreadsheet_(ui, askAlways) {
   const staffSs = SpreadsheetApp.openById(id);
   props.setProperty(STAFF_PROP, id);
   return staffSs;
+}
+
+/* ------------------------------------------------------------------ */
+/* 長官及工作人員：匯入報名資料                                         */
+/* ------------------------------------------------------------------ */
+/**
+ * 選單：把長官及工作人員名單試算表（「第一梯次」「第二梯次」「第三梯次」分頁，欄位同報名表）
+ * 加入報名試算表的「活動報名資料」與各梯次分頁。
+ * - 身分保留「長官」「工作人員」；統計時合併為「長官/工作人員」，計入各梯次總人數上限。
+ * - 「通知寄送時間」填入匯入時間：報名成功／行前資訊已另行寄送，背景作業不會再寄。
+ * - 同梯次已有相同人事號或身分證號的資料會略過，可以重複執行。
+ * - 不放進公開的問卷查詢名單，也不能填寫活動滿意度調查。
+ * - 名單試算表的「活動報名資料」分頁只用來核對（與三個梯次分頁的人是否一致），不另外匯入，避免重複。
+ */
+function importStaffRegistrationsDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const staffSs = openStaffSpreadsheet_(ui, true);
+  if (!staffSs) return;
+  const plan = planStaffImport_(staffSs);
+  if (plan.error) { ui.alert(plan.error); return; }
+  const notes = plan.skipped.length ? '\n\n略過 ' + plan.skipped.length + ' 筆：\n' + plan.skipped.join('\n') : '';
+  const warns = plan.warnings.length ? '\n\n⚠️ 請確認：\n' + plan.warnings.join('\n') : '';
+  if (!plan.add.length) { ui.alert('沒有需要匯入的資料。' + notes + warns); return; }
+  const lines = SESSIONS.map(s => {
+    const xs = plan.add.filter(x => x.session === s);
+    return xs.length ? s + ' ' + xs.length + ' 位：' + xs.map(x => x.name + '（' + x.identity + '）').join('、') : '';
+  }).filter(Boolean);
+  const ok = ui.alert('匯入長官及工作人員',
+    '將加入「活動報名資料」與各梯次分頁，共 ' + plan.add.length + ' 位：\n\n' + lines.join('\n') +
+    '\n\n不會寄送報名成功／行前資訊 E-mail（通知寄送時間會填入匯入時間）。' + notes + warns + '\n\n確定匯入？',
+    ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+  const n = importStaffRows_(plan.add);
+  ui.alert('已匯入 ' + n + ' 位長官及工作人員。\n儀表板與報名網頁約 1 分鐘內更新（各梯次總人數已包含長官及工作人員）。');
+}
+
+/** 讀取名單並決定要匯入哪些人（不寫入） */
+function planStaffImport_(staffSs) {
+  const master = getSheet_(MASTER_SHEET);
+  const existing = readMaster_(master);
+  const key = (s, id) => s + '|' + id;
+  const seen = {};
+  existing.forEach(r => {
+    const s = String(r[COL['梯次'] - 1]).trim();
+    const e = normalizeId(r[COL['人事號'] - 1]), n = normalizeId(r[COL['身分證號'] - 1]);
+    if (e) seen[key(s, 'E' + e)] = true;
+    if (n) seen[key(s, 'N' + n)] = true;
+  });
+  const add = [], skipped = [], warnings = [];
+  let tabs = 0;
+  SESSIONS.forEach(session => {
+    const sh = staffSs.getSheetByName(session);
+    if (!sh || sh.getLastRow() < 2) return;
+    tabs++;
+    const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).trim());
+    const values = sh.getRange(2, 1, sh.getLastRow() - 1, head.length).getValues();
+    values.forEach(v => {
+      const get = h => head.indexOf(h) === -1 ? '' : v[head.indexOf(h)];
+      const name = String(get('姓名')).trim();
+      if (!name) return;
+      const identity = canonIdentity_(get('身分'));
+      const empId = normalizeId(get('人事號')), nid = normalizeId(get('身分證號'));
+      const label = session + '｜' + name;
+      if (!isStaff_(identity)) { skipped.push(label + '：身分「' + (identity || '空白') + '」不是長官或工作人員'); return; }
+      const rowSession = String(get('梯次')).trim();
+      if (rowSession && rowSession !== session) warnings.push(label + '：「梯次」欄寫的是 ' + rowSession + '，以分頁「' + session + '」為準');
+      if ((empId && seen[key(session, 'E' + empId)]) || (nid && seen[key(session, 'N' + nid)])) { skipped.push(label + '：已在報名資料中'); return; }
+      if (empId) seen[key(session, 'E' + empId)] = true;
+      if (nid) seen[key(session, 'N' + nid)] = true;
+      const row = HEADERS.map(h => {
+        const x = get(h);
+        return x === null || x === undefined ? '' : x;
+      });
+      row[COL['梯次'] - 1] = session;
+      row[COL['身分'] - 1] = identity;
+      add.push({ session: session, name: name, identity: identity, empId: empId, row: row });
+    });
+  });
+  if (!tabs) return { error: '名單試算表找不到有資料的「第一梯次」「第二梯次」「第三梯次」分頁。' };
+
+  // 與名單的「活動報名資料」分頁核對（只提醒，不匯入）
+  const all = staffSs.getSheetByName(MASTER_SHEET);
+  if (all && all.getLastRow() >= 2) {
+    const head = all.getRange(1, 1, 1, all.getLastColumn()).getValues()[0].map(h => String(h).trim());
+    const cS = head.indexOf('梯次'), cN = head.indexOf('姓名');
+    if (cS !== -1 && cN !== -1) {
+      const inAll = all.getRange(2, 1, all.getLastRow() - 1, head.length).getValues()
+        .filter(r => String(r[cN]).trim()).map(r => String(r[cS]).trim() + '｜' + String(r[cN]).trim());
+      const inTabs = add.map(x => x.session + '｜' + x.name).concat(skipped.map(t => t.split('：')[0]));
+      inAll.filter(x => inTabs.indexOf(x) === -1).forEach(x => warnings.push(x + '：只在名單的「活動報名資料」分頁，梯次分頁沒有（未匯入）'));
+    }
+  }
+  return { add: add, skipped: skipped, warnings: warnings };
+}
+
+/** 寫入（鎖定期間）；回傳匯入人數 */
+function importStaffRows_(items) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const master = getSheet_(MASTER_SHEET);
+    const now = new Date();
+    ensureExtraHeaders_();
+    items.forEach(x => {
+      const row = x.row.slice();
+      row[COL['通知寄送時間'] - 1] = now;               // 已另行寄送，背景作業不會再寄
+      row[COL['備註'] - 1] = [String(row[COL['備註'] - 1] || '').trim(), '長官/工作人員匯入（報名成功及行前資訊已另行寄送）'].filter(Boolean).join('；');
+      appendRow_(master, row);
+      appendRow_(getSheet_(x.session), row);
+    });
+    SpreadsheetApp.flush();
+    try { refreshCaches_(); } catch (e) { clearCache_(); }
+  } finally {
+    lock.releaseLock();
+  }
+  try { publishStats(); } catch (e) { Logger.log('publishStats 失敗：' + e); }
+  return items.length;
 }
 
 /** 選單：寄送長官及工作人員的報名成功／行前資訊（已寄過的會略過） */
@@ -1256,7 +1384,7 @@ function publishStats() {
   const out = [['類型', '鍵1', '鍵2', '數值', '更新時間']];
 
   SESSIONS.forEach(s => out.push(['梯次上限', s, '', SESSION_CAPS[s], now]));
-  SESSIONS.forEach(s => IDENTITIES.forEach(k => out.push(['名額', s, k, counts[s][k], now])));
+  SESSIONS.forEach(s => COUNT_IDENTITIES.forEach(k => out.push(['名額', s, k, counts[s][k], now])));
 
   const meals = {}, daily = {}, units = {};
   SESSIONS.forEach(s => meals[s] = { '葷食': 0, '素食': 0 });
@@ -1297,7 +1425,7 @@ function publishSurveyLookup_(stats, rows, now) {
     const sh = ss_().getSheetByName(SURVEY_SHEETS[s]);
     if (sh) surveyEntries_(sh).forEach(x => { if (x.empId && !done[s + '|' + x.empId]) done[s + '|' + x.empId] = x.no || '已填寫'; });
   });
-  const out = registrationsFromRows_(rows).map(r => [
+  const out = registrationsFromRows_(rows).filter(r => !isStaff_(r.identity)).map(r => [   // 長官及工作人員不放進公開名單
     r.empId, r.session, canonIdentity_(r.identity), r.unit, r.name, r.title, done[r.session + '|' + r.empId] || '', now
   ]);
   sheet.clearContents();
@@ -1419,13 +1547,15 @@ function findRegistration_(session, empId, rows) {
   return { record: record, otherSessions: otherSessions };
 }
 
-/** 總表資料（同儀表板名單格式）；優先用快取，沒有快取才讀試算表 */
+/** 問卷用的報名名單（同儀表板名單格式，不含長官及工作人員）；優先用快取，沒有快取才讀試算表 */
 function registrationList_(fresh) {
+  let list = null;
   if (!fresh) {
     const cached = cacheGet_('dashboard');
-    if (cached && Array.isArray(cached.registrations)) return cached.registrations;
+    if (cached && Array.isArray(cached.registrations)) list = cached.registrations;
   }
-  return registrationsFromRows_(readMaster_(getSheet_(MASTER_SHEET)));
+  if (!list) list = registrationsFromRows_(readMaster_(getSheet_(MASTER_SHEET)));
+  return list.filter(r => !isStaff_(r.identity));
 }
 
 /** 此分頁已有的填寫紀錄：[{ no, empId, id, row }] */
