@@ -766,7 +766,7 @@ function buildNotificationEmail_(reg, pre) {
   ];
 
   // 行前提醒信：注意事項最上方的醒目區塊（學分核予條件、問卷網址、小禮物）
-  const credit = '須兩天全程參與，並於活動當天完成「活動滿意度調查問卷」（滿意度 11 題＋上傳活動照＋填寫最感動的一段話），始得核予學分。';
+  const credit = '須兩天全程參與，並完成活動當天的「活動滿意度調查問卷」（滿意度 11 題＋上傳活動照＋填寫最感動的一段話），始得核予學分。';
   const surveyHint = '輸入人事號後，系統會自動帶出您的報名資料；每人限填寫一次。';
   const gift = '與教學部或奇美醫院手拉旗合影自拍，分享到任一社群媒體（Facebook、Instagram、Threads 等皆可），並將貼文截圖上傳至問卷，教學部確認後，將通知您前來領取精美小禮物。';
   const plainRow = x => '  ' + x[0] + '｜' + x[1] + (x[2] ? '（' + x[2] + '）' : '');
@@ -815,7 +815,7 @@ function buildNotificationEmail_(reg, pre) {
   const important = !pre ? '' :
     '<div style="border:2px solid #b4432f;background:#fff8e1;border-radius:8px;padding:12px 16px;margin:0 0 12px">' +
     '<div style="font-size:16px;font-weight:bold;color:#b4432f;margin-bottom:6px">【重要｜學分核予】</div>' +
-    '<div style="font-weight:bold">須<span style="color:#b4432f">兩天全程參與</span>，並於活動當天完成「<span style="color:#b4432f">活動滿意度調查問卷</span>」' +
+    '<div style="font-weight:bold">須<span style="color:#b4432f">兩天全程參與</span>，並完成活動當天的「<span style="color:#b4432f">活動滿意度調查問卷</span>」' +
     '（滿意度 11 題＋上傳活動照＋填寫最感動的一段話），<span style="color:#b4432f;text-decoration:underline">始得核予學分</span>。</div>' +
     '<div style="margin-top:8px"><b>問卷網址：</b><a href="' + esc_(pre.surveyUrl) + '" style="color:#b4432f;font-weight:bold">' + esc_(pre.surveyUrl) + '</a><br>' +
     '<span style="font-size:13px;color:#5f5a53">' + esc_(surveyHint) + '</span></div>' +
