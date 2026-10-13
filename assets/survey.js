@@ -56,6 +56,7 @@ const ICONS = {
   food: '<svg viewBox="0 0 64 64" aria-hidden="true"><g stroke="#b4432f" stroke-width="2.5" fill="none" stroke-linecap="round"><path d="M24 24 c-3 -4 3 -6 0 -10"/><path d="M32 22 c-3 -4 3 -6 0 -10"/><path d="M40 24 c-3 -4 3 -6 0 -10"/></g><path d="M8 30 h48 c0 14 -10 24 -24 24 s-24 -10 -24 -24z" fill="#f7efdd" stroke="#b4432f" stroke-width="3"/><path d="M14 30 c6 -6 30 -6 36 0" fill="none" stroke="#d9a441" stroke-width="3"/><rect x="22" y="54" width="20" height="4" rx="2" fill="#b4432f"/></svg>',
   care: '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M12 36 c6 -8 14 -8 20 -2 l8 6 c3 2 1 6 -2 6 l-10 -1" fill="#f7efdd" stroke="#3e7c59" stroke-width="3" stroke-linejoin="round"/><path d="M52 36 c-6 -8 -14 -8 -20 -2" fill="none" stroke="#3e7c59" stroke-width="3"/><path d="M8 44 l14 6 c6 2 12 2 18 0 l16 -8" fill="none" stroke="#3e7c59" stroke-width="3" stroke-linecap="round"/><path d="M32 14 c-4 -6 -12 -4 -12 3 c0 6 12 12 12 12 s12 -6 12 -12 c0 -7 -8 -9 -12 -3z" fill="#e4572e"/></svg>',
   self: '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="28" r="18" fill="#f1dfae"/><circle cx="32" cy="28" r="10" fill="#d9a441"/><g stroke="#d9a441" stroke-width="3" stroke-linecap="round"><path d="M32 6 v6 M32 44 v6 M10 28 h6 M48 28 h6 M16.5 12.5 l4 4 M43.5 43.5 l4 4 M16.5 43.5 l4 -4 M43.5 12.5 l-4 4"/></g><path d="M14 56 q18 -10 36 0" fill="none" stroke="#3e7c59" stroke-width="3" stroke-linecap="round"/></svg>',
+  course: '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 16 c-8 -6 -18 -6 -24 -3 v36 c6 -3 16 -3 24 3 c8 -6 18 -6 24 -3 v-36 c-6 -3 -16 -3 -24 3z" fill="#f1ebf7" stroke="#6b4e8f" stroke-width="3" stroke-linejoin="round"/><path d="M32 16 v36" stroke="#6b4e8f" stroke-width="3"/><path d="M14 24 h10 M14 32 h10 M40 24 h10 M40 32 h10" stroke="#b39bcf" stroke-width="2.5" stroke-linecap="round"/></svg>',
   overall: '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 8 l7.4 15 16.6 2.4 -12 11.7 2.8 16.5 -14.8 -7.8 -14.8 7.8 2.8 -16.5 -12 -11.7 16.6 -2.4z" fill="#d3e2e8" stroke="#2f5f72" stroke-width="3" stroke-linejoin="round"/></svg>',
   camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
   phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>',
@@ -64,7 +65,7 @@ const ICONS = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>'
 };
 
-// 10 題：三面向（飲食文化、社區照護、自我覺察）＋整體滿意度。順序與 Code.gs 的 SURVEY_QUESTIONS 相同
+// 11 題：三面向（飲食文化、社區照護、自我覺察）＋整體滿意度＋課程規劃。順序與 Code.gs 的 SURVEY_QUESTIONS 相同
 const GROUPS = [
   {
     key: "飲食文化", no: "01", icon: ICONS.food, desc: "走讀街巷、市場與聚落，從在地飲食認識生活型態",
@@ -98,6 +99,13 @@ const GROUPS = [
     ink: "#2f5f72", bg: "#eef5f8", line: "#cfe0e7",
     questions: [
       "整體而言，我對本次活動（行程安排、導覽解說、交通與餐食）感到滿意。"
+    ]
+  },
+  {
+    key: "課程規劃", no: "05", icon: ICONS.course, desc: "作為未來課程開發的評估參考",
+    ink: "#6b4e8f", bg: "#f6f1fa", line: "#ddd0ea",
+    questions: [
+      "我認為類似的走讀體驗活動，適合納入例行的教學課程中。"
     ]
   }
 ];
@@ -242,7 +250,7 @@ function render() {
       <p class="lead">感謝您參加這兩天的臺南走讀！問卷約需 5 分鐘，您的回饋將幫助我們把活動辦得更好。</p>
       <ol class="steps">
         <li><b>1</b>輸入人事號</li>
-        <li><b>2</b>滿意度 10 題</li>
+        <li><b>2</b>滿意度 ${QUESTION_COUNT} 題</li>
         <li><b>3</b>活動照＋最感動的一段話</li>
         <li><b>4</b>選填：社群截圖拿小禮物</li>
       </ol>
@@ -1086,7 +1094,7 @@ function init() {
   $("#surveyForm").addEventListener("submit", onSubmit);
   $("#doneOk").addEventListener("click", closeDone);
 
-  // 還原草稿（人事號、10 題、最感動的一段話、送出代碼與上傳進度；照片需重新選取，選同一張會從中斷處續傳）
+  // 還原草稿（人事號、各題作答、最感動的一段話、送出代碼與上傳進度；照片需重新選取，選同一張會從中斷處續傳）
   const d = loadDraft();
   if (d) {
     if (d.sid && /^[A-Za-z0-9-]{8,64}$/.test(d.sid)) state.submissionId = d.sid;

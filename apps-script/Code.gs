@@ -1459,7 +1459,7 @@ const SURVEY_FOLDERS = {
   '第二梯次': { photo: '1aC8l40vsFAe4vrnueEqMl2aXxqn-7lP3', social: '1Kww_-QJIifSE5aMXjnx3GyJOC1yof1s6' },
   '第三梯次': { photo: '1WkAgXSNxdHmQo6XMEpFBk7msDMiLTQN2', social: '1XTnAUDv8Dl2qJpNeZ603N-4rDH3IXs1O' }
 };
-// 10 題的表頭（順序與 assets/survey.js 的 QUESTIONS 相同；完整題目見該檔）
+// 11 題的表頭（順序與 assets/survey.js 的 GROUPS 相同；完整題目見該檔）。Q11 於 2026-10-13 新增（課程開發評估參考）
 const SURVEY_QUESTIONS = [
   'Q1 飲食文化｜認識臺南飲食文化與生活',
   'Q2 飲食文化｜理解飲食與健康的關聯',
@@ -1470,8 +1470,10 @@ const SURVEY_QUESTIONS = [
   'Q7 自我覺察｜覺察自己的情緒與身心',
   'Q8 自我覺察｜反思專業價值與初衷',
   'Q9 自我覺察｜把體會帶回日常工作',
-  'Q10 整體滿意度'
+  'Q10 整體滿意度',
+  'Q11 課程規劃｜適合納入例行課程'
 ];
+const SURVEY_LEGACY_QUESTIONS = 10;          // 新增 Q11 之前開著的舊版問卷頁只會送 10 題：仍接受，Q11 留空
 const SURVEY_HEADERS = ['編號', '填寫時間', '梯次', '身分', '單位', '姓名', '人事號', '職稱']
   .concat(SURVEY_QUESTIONS)
   .concat(['其他建議或回饋', '最感動的一段話', '活動照', '社群媒體截圖', '送出代碼']);   // 其他建議或回饋：選填（2026-10-08 新增）
@@ -1818,7 +1820,7 @@ function submitSurvey_(d) {
   const empId = normalizeId(d.empId);
   if (!empId) return { ok: false, error: 'invalid', message: '請填寫人事號' };
   const answers = Array.isArray(d.answers) ? d.answers.map(Number) : [];
-  if (answers.length !== SURVEY_QUESTIONS.length || answers.some(a => !(a >= 1 && a <= 5 && Math.floor(a) === a))) {
+  if ((answers.length !== SURVEY_QUESTIONS.length && answers.length !== SURVEY_LEGACY_QUESTIONS) || answers.some(a => !(a >= 1 && a <= 5 && Math.floor(a) === a))) {
     return { ok: false, error: 'invalid', message: '請完成全部 ' + SURVEY_QUESTIONS.length + ' 題（每題 1～5 分）。' };
   }
   const story = txt_(d.story);
@@ -1884,7 +1886,7 @@ function submitSurvey_(d) {
         '姓名': reg.name, '人事號': reg.empId, '職稱': reg.title,
         '其他建議或回饋': '', '最感動的一段話': '', '活動照': '', '社群媒體截圖': '', '送出代碼': submissionId
       };
-      SURVEY_QUESTIONS.forEach((q, i) => { values[q] = answers[i]; });
+      SURVEY_QUESTIONS.forEach((q, i) => { values[q] = answers[i] === undefined ? '' : answers[i]; });
       const r = sheet.getLastRow() + 1;
       writeRowAt_(sheet, r, headers.map(h => values[h] === undefined ? '' : values[h]), headers, SURVEY_TEXT_COLS, '填寫時間');
       // 文字與連結以 RichText 寫入：內容不會被當成公式（例如以「=」開頭），連結欄顯示檔名、點了開啟檔案
