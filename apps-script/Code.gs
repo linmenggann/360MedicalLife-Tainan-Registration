@@ -89,6 +89,13 @@ const MAIL_SENDER_NAME = '奇美醫院教學部 林盟淦';   // 寄件人顯示
 const MAIL_REPLY_TO = '910632@chimei.org.tw';    // 回覆信箱
 const MAIL_FROM_ALIAS = '';                      // 若 Gmail 已設定「以此地址寄件」別名（如 910632@chimei.org.tw）可填入；留空則用帳號本身
 const MAIL_SUBJECT_PREFIX = '【報名成功／行前資訊】360°醫學人生｜走進臺南，走進生活';
+const PRETRIP_SUBJECT_PREFIX = '【行前提醒】360°醫學人生｜走進臺南，走進生活';
+// 各梯次活動滿意度調查問卷網址（行前提醒信使用）
+const SURVEY_URLS = {
+  '第一梯次': 'https://linmenggann.github.io/360MedicalLife-Tainan-Registration/survey-1.html',
+  '第二梯次': 'https://linmenggann.github.io/360MedicalLife-Tainan-Registration/survey-2.html',
+  '第三梯次': 'https://linmenggann.github.io/360MedicalLife-Tainan-Registration/survey-3.html'
+};
 const PDF_ATTACHMENT_NAME = '360°醫學人生｜走進臺南，走進生活行程v4.pdf';
 const PDF_DRIVE_FILE_ID = '';                    // 行程 PDF 的 Google 雲端硬碟檔案 ID（優先使用）；留空則由下列網址下載
 const PDF_URL = 'https://linmenggann.github.io/360MedicalLife-Tainan-Registration/assets/itinerary.pdf';
@@ -183,6 +190,9 @@ function onOpen() {
     .addItem('預覽長官及工作人員通知信（寄給自己）', 'previewStaffNotificationDialog')
     .addItem('寄送長官及工作人員行前資訊', 'sendStaffNotificationsDialog')
     .addItem('匯入長官及工作人員至報名資料', 'importStaffRegistrationsDialog')
+    .addSeparator()
+    .addItem('預覽行前提醒信（寄給自己）', 'previewPreTripReminderDialog')
+    .addItem('寄送行前提醒信', 'sendPreTripReminderDialog')
     .addSeparator()
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
     .addSeparator()
@@ -721,15 +731,21 @@ function esc_(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-/** 產生通知信的主旨、純文字與 HTML 內容 */
-function buildNotificationEmail_(reg) {
+/**
+ * 產生通知信的主旨、純文字與 HTML 內容。
+ * pre 省略＝報名成功／行前資訊信；pre = { table, surveyUrl }＝行前提醒信（顯示桌次、問卷網址與學分核予條件）。
+ */
+function buildNotificationEmail_(reg, pre) {
   const sessionLabel = SESSION_LABELS[reg.session] || reg.session;
-  const subject = MAIL_SUBJECT_PREFIX + '（' + reg.session + '）';
+  const subject = (pre ? PRETRIP_SUBJECT_PREFIX : MAIL_SUBJECT_PREFIX) + '（' + reg.session + '）';
+  const intro = pre
+    ? '「360°醫學人生｜走進臺南，走進生活」' + reg.session + '即將於 ' + sessionLabel + ' 舉行，行前提醒如下，敬請準時出席：'
+    : '恭喜您已成功報名「360°醫學人生｜走進臺南，走進生活」' + reg.session + '，活動相關資訊如下，敬請預留時間準時出席：';
 
   const day1 = [
     ['08:50–09:00', '集合'],
     ['09:30–11:00', '城市經典｜老派台南的神級日常 × 散步導覽（含導覽點心）'],
-    ['11:30–12:40', '午宴：府城食府 新仁店'],
+    ['11:30–12:40', '午宴：府城食府 新仁店', pre && pre.table ? '您的桌次：' + pre.table : ''],
     ['13:30–14:30', '四草綠色隧道巡河之旅（遊船）'],
     ['15:00–16:00', '安平徒步導覽'],
     ['16:00–17:00', '賦歸']
@@ -737,7 +753,7 @@ function buildNotificationEmail_(reg) {
   const day2 = [
     ['09:20–09:30', '集合'],
     ['10:30–12:30', '菁寮老街百年聚落導覽＆手作傳統米食（手作紅龜粿）'],
-    ['12:30–13:30', '午宴：俗女餐桌'],
+    ['12:30–13:30', '午宴：俗女餐桌', pre ? 'Buffet 自由就座' : ''],
     ['14:30–17:00', '大崎聚落散策＋村落特色 DIY 二擇一'],
     ['17:00–18:00', '賦歸']
   ];
@@ -749,11 +765,17 @@ function buildNotificationEmail_(reg) {
     '完整行程請見附件「' + PDF_ATTACHMENT_NAME + '」。'
   ];
 
+  // 行前提醒信：注意事項最上方的醒目區塊（學分核予條件、問卷網址、小禮物）
+  const credit = '須兩天全程參與，並於活動當天完成「活動滿意度調查問卷」（滿意度 11 題＋上傳活動照＋填寫最感動的一段話），始得核予學分。';
+  const surveyHint = '輸入人事號後，系統會自動帶出您的報名資料；每人限填寫一次。';
+  const gift = '與教學部或奇美醫院手拉旗合影自拍，分享到任一社群媒體（Facebook、Instagram、Threads 等皆可），並將貼文截圖上傳至問卷，教學部確認後，將通知您前來領取精美小禮物。';
+  const plainRow = x => '  ' + x[0] + '｜' + x[1] + (x[2] ? '（' + x[2] + '）' : '');
+
   // ---- 純文字 ----
   const t = [];
   t.push(reg.name + ' 您好，');
   t.push('');
-  t.push('恭喜您已成功報名「360°醫學人生｜走進臺南，走進生活」' + reg.session + '，活動相關資訊如下，敬請預留時間準時出席：');
+  t.push(intro);
   t.push('');
   t.push('【報名資料】');
   t.push('梯次：' + reg.session + '（' + sessionLabel + '）');
@@ -768,11 +790,17 @@ function buildNotificationEmail_(reg) {
   t.push('');
   t.push('【兩日行程】');
   t.push('Day 1｜台南老城・安平');
-  day1.forEach(x => t.push('  ' + x[0] + '｜' + x[1]));
+  day1.forEach(x => t.push(plainRow(x)));
   t.push('Day 2｜台南後壁菁寮・官田大崎');
-  day2.forEach(x => t.push('  ' + x[0] + '｜' + x[1]));
+  day2.forEach(x => t.push(plainRow(x)));
   t.push('');
   t.push('【注意事項】');
+  if (pre) {
+    t.push('★【重要｜學分核予】' + credit);
+    t.push('　問卷網址：' + pre.surveyUrl);
+    t.push('　（' + surveyHint + '）');
+    t.push('★【加碼小禮物】' + gift);
+  }
   notes.forEach(n => t.push('・' + n));
   t.push('');
   t.push('');
@@ -782,16 +810,29 @@ function buildNotificationEmail_(reg) {
   const text = t.join('\n');
 
   // ---- HTML ----
-  const li = arr => arr.map(x => '<tr><td style="padding:3px 10px 3px 0;white-space:nowrap;color:#8a2f22;font-weight:bold">' + esc_(x[0]) + '</td><td style="padding:3px 0">' + esc_(x[1]) + '</td></tr>').join('');
+  const li = arr => arr.map(x => '<tr><td style="padding:3px 10px 3px 0;white-space:nowrap;color:#8a2f22;font-weight:bold;vertical-align:top">' + esc_(x[0]) + '</td><td style="padding:3px 0">' + esc_(x[1]) +
+    (x[2] ? ' <b style="color:#b4432f;background:#fff3cd;padding:1px 8px;border-radius:4px;white-space:nowrap">' + esc_(x[2]) + '</b>' : '') + '</td></tr>').join('');
+  const important = !pre ? '' :
+    '<div style="border:2px solid #b4432f;background:#fff8e1;border-radius:8px;padding:12px 16px;margin:0 0 12px">' +
+    '<div style="font-size:16px;font-weight:bold;color:#b4432f;margin-bottom:6px">【重要｜學分核予】</div>' +
+    '<div style="font-weight:bold">須<span style="color:#b4432f">兩天全程參與</span>，並於活動當天完成「<span style="color:#b4432f">活動滿意度調查問卷</span>」' +
+    '（滿意度 11 題＋上傳活動照＋填寫最感動的一段話），<span style="color:#b4432f;text-decoration:underline">始得核予學分</span>。</div>' +
+    '<div style="margin-top:8px"><b>問卷網址：</b><a href="' + esc_(pre.surveyUrl) + '" style="color:#b4432f;font-weight:bold">' + esc_(pre.surveyUrl) + '</a><br>' +
+    '<span style="font-size:13px;color:#5f5a53">' + esc_(surveyHint) + '</span></div>' +
+    '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #d9a441">&#x1F381; <b style="color:#b4432f">加碼小禮物：</b>' +
+    '與<b>教學部</b>或<b>奇美醫院手拉旗</b>合影自拍，分享到任一社群媒體（Facebook、Instagram、Threads 等皆可），並將<b>貼文截圖</b>上傳至問卷，教學部確認後，將通知您前來領取<b>精美小禮物</b>。</div>' +
+    '</div>';
   const html =
     '<div style="font-family:微軟正黑體,Microsoft JhengHei,PingFang TC,sans-serif;font-size:15px;line-height:1.7;color:#2b2a28;max-width:720px">' +
     '<div style="border-left:6px solid #b4432f;padding:6px 14px;margin-bottom:16px;background:#fbf7ee">' +
     '<div style="font-size:14px;color:#8a2f22;letter-spacing:.1em">奇美醫院教學部</div>' +
     '<div style="font-size:24px;font-weight:bold;color:#1f3a3d">360°醫學人生｜走進臺南，走進生活</div>' +
-    '<div style="font-size:16px;color:#b4432f;font-weight:bold">報名成功通知 &amp; 行前資訊 &#x1F4E2;</div>' +
+    '<div style="font-size:16px;color:#b4432f;font-weight:bold">' + (pre ? '行前提醒' : '報名成功通知 &amp; 行前資訊') + ' &#x1F4E2;</div>' +
     '</div>' +
     '<p><b>' + esc_(reg.name) + '</b> 您好，</p>' +
-    '<p>恭喜您已成功報名「<b>360°醫學人生｜走進臺南，走進生活</b>」<b style="color:#b4432f">' + esc_(reg.session) + '</b>，活動相關資訊如下，敬請預留時間準時出席：</p>' +
+    (pre
+      ? '<p>「<b>360°醫學人生｜走進臺南，走進生活</b>」<b style="color:#b4432f">' + esc_(reg.session) + '</b>即將於 <b style="color:#b4432f">' + esc_(sessionLabel) + '</b> 舉行，行前提醒如下，敬請準時出席：</p>'
+      : '<p>恭喜您已成功報名「<b>360°醫學人生｜走進臺南，走進生活</b>」<b style="color:#b4432f">' + esc_(reg.session) + '</b>，活動相關資訊如下，敬請預留時間準時出席：</p>') +
     '<h3 style="font-size:16px;color:#1f3a3d;border-bottom:2px solid #d9a441;padding-bottom:4px;margin:20px 0 8px">【報名資料】</h3>' +
     '<table style="border-collapse:collapse;font-size:15px">' +
     '<tr><td style="padding:3px 12px 3px 0;color:#5f5a53">梯次</td><td style="padding:3px 0"><b>' + esc_(reg.session) + '</b>（' + esc_(sessionLabel) + '）</td></tr>' +
@@ -809,6 +850,7 @@ function buildNotificationEmail_(reg) {
     '<p style="margin:6px 0 2px"><b>Day 1｜台南老城・安平</b></p><table style="border-collapse:collapse;font-size:14px">' + li(day1) + '</table>' +
     '<p style="margin:12px 0 2px"><b>Day 2｜台南後壁菁寮・官田大崎</b></p><table style="border-collapse:collapse;font-size:14px">' + li(day2) + '</table>' +
     '<h3 style="font-size:16px;color:#1f3a3d;border-bottom:2px solid #d9a441;padding-bottom:4px;margin:20px 0 8px">【注意事項】</h3>' +
+    important +
     '<ul style="margin:0;padding-left:20px">' + notes.map(n => '<li>' + esc_(n) + '</li>').join('') + '</ul>' +
     '<br><br>' +
     '<div style="font-size:13px;color:#5f5a53;line-height:1.6">' +
@@ -1430,6 +1472,188 @@ function publishSurveyLookup_(stats, rows, now) {
   ]);
   sheet.clearContents();
   writeRowsAt_(sheet, 1, [SURVEY_LOOKUP_HEADERS].concat(out), SURVEY_LOOKUP_HEADERS, ['人事號', '單位', '姓名', '職稱'], null);
+}
+
+/* ------------------------------------------------------------------ */
+/* 行前提醒信（各梯次活動前寄給該梯次分頁的所有人）                    */
+/* ------------------------------------------------------------------ */
+/*
+ * 收件人：報名試算表該梯次分頁（例如「第一梯次」）中有姓名與 E-mail 的每一列（含已匯入的長官及工作人員）。
+ * 內容：沿用報名成功／行前資訊信的版面（buildNotificationEmail_ 的行前提醒模式），另外加上
+ *   - Day 1「午宴：府城食府 新仁店」顯示個人桌次；Day 2「午宴：俗女餐桌」顯示「Buffet 自由就座」
+ *   - 注意事項最上方的醒目區塊：學分核予條件、該梯次活動滿意度調查問卷網址、手拉旗自拍小禮物
+ *   - 附件：行程 PDF（PDF_ATTACHMENT_NAME）
+ * 桌次：讀取「桌次 Google 試算表」（把桌次 Excel 上傳成 Google 試算表；需有「人事號」「桌次」欄位），以人事號比對。
+ *       人事號不放進程式碼。網址記在指令碼屬性，每個梯次各一份。
+ * 寄送紀錄：寫在該梯次分頁的「行前提醒寄送時間」欄（沒有會自動補在最後），已寄過的人不會重複寄。
+ */
+const PRETRIP_SENT_HEADER = '行前提醒寄送時間';
+const SEAT_PROP_PREFIX = 'SEAT_SPREADSHEET_ID_';
+
+/** 詢問梯次（輸入 1、2、3 或完整名稱）；取消回傳 null */
+function askSession_(ui, title) {
+  const r = ui.prompt(title, '請輸入梯次：1、2 或 3（第一梯次請輸入 1）', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return null;
+  const t = String(r.getResponseText()).normalize('NFKC').trim();
+  const s = { '1': '第一梯次', '2': '第二梯次', '3': '第三梯次' }[t] || t;
+  if (SESSIONS.indexOf(s) === -1) { ui.alert('梯次不正確：' + t); return null; }
+  return s;
+}
+
+/** 開啟該梯次的桌次試算表（第一次或 askAlways 時詢問網址） */
+function openSeatSpreadsheet_(ui, session, askAlways) {
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty(SEAT_PROP_PREFIX + session) || '';
+  if (!id || askAlways) {
+    const r = ui.prompt(session + '桌次',
+      '請貼上「' + session + '桌次」Google 試算表的網址（需有「人事號」與「桌次」欄位）' + (id ? '\n留空則沿用上次的桌次試算表。' : ''),
+      ui.ButtonSet.OK_CANCEL);
+    if (r.getSelectedButton() !== ui.Button.OK) return null;
+    const input = spreadsheetIdFrom_(r.getResponseText());
+    if (input) id = input;
+  }
+  if (!id) return null;
+  const ss = SpreadsheetApp.openById(id);
+  props.setProperty(SEAT_PROP_PREFIX + session, id);
+  return ss;
+}
+
+/** 桌次：1 → 「第 1 桌」；已經有文字（例如「主桌」）就原樣使用 */
+function tableLabel_(v) {
+  const t = String(v == null ? '' : v).normalize('NFKC').trim();
+  if (!t) return '';
+  return /^\d+$/.test(t) ? '第 ' + t + ' 桌' : t;
+}
+
+/** 讀取桌次試算表：找第一個同時有「人事號」「桌次」表頭的分頁 → { byEmp: {人事號: 桌次}, people: [{empId, name, table}] } */
+function readSeats_(seatSs, session) {
+  const sheets = seatSs.getSheets();
+  for (let i = 0; i < sheets.length; i++) {
+    const sh = sheets[i];
+    if (sh.getLastRow() < 2) continue;
+    const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).trim());
+    const cE = head.indexOf('人事號'), cT = head.indexOf('桌次');
+    if (cE === -1 || cT === -1) continue;
+    const cN = head.indexOf('姓名'), cS = head.indexOf('梯次');
+    const byEmp = {}, people = [];
+    sh.getRange(2, 1, sh.getLastRow() - 1, head.length).getValues().forEach(r => {
+      const empId = normalizeId(r[cE]);
+      if (!empId) return;
+      if (cS !== -1 && String(r[cS]).trim() && String(r[cS]).trim() !== session) return;   // 其他梯次的列
+      const table = tableLabel_(r[cT]);
+      byEmp[empId] = table;
+      people.push({ empId: empId, name: cN === -1 ? '' : String(r[cN]).trim(), table: table });
+    });
+    return { byEmp: byEmp, people: people, sheetName: sh.getName() };
+  }
+  throw new Error('桌次試算表找不到同時有「人事號」與「桌次」欄位的分頁。');
+}
+
+/** 該梯次分頁的收件人：[{ row, reg, sent }]；必要時補上「行前提醒寄送時間」欄 */
+function preTripRecipients_(session) {
+  const sheet = getSheet_(session);
+  const last = sheet.getLastRow();
+  let lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+  const head = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  let sentCol = head.indexOf(PRETRIP_SENT_HEADER) + 1;
+  if (!sentCol) {
+    sentCol = lastCol + 1;
+    sheet.getRange(1, sentCol).setValue(PRETRIP_SENT_HEADER).setFontWeight('bold');
+    lastCol = sentCol;
+  }
+  if (last < 2) return { sheet: sheet, sentCol: sentCol, list: [] };
+  const list = [];
+  sheet.getRange(2, 1, last - 1, lastCol).getValues().forEach((r, i) => {
+    if (!String(r[COL['姓名'] - 1]).trim()) return;
+    const reg = rowToReg_(r);
+    reg.session = session;
+    list.push({ row: i + 2, reg: reg, sent: !!r[sentCol - 1] });
+  });
+  return { sheet: sheet, sentCol: sentCol, list: list };
+}
+
+/** 寄出一封行前提醒信 */
+function sendPreTripEmail_(reg, table, overrideTo, pdfBlob) {
+  const to = overrideTo || reg.email;
+  if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error('E-mail 格式不正確：' + to);
+  const mail = buildNotificationEmail_(reg, { table: table, surveyUrl: SURVEY_URLS[reg.session] });
+  const opts = { name: MAIL_SENDER_NAME, replyTo: MAIL_REPLY_TO, htmlBody: mail.html, attachments: [pdfBlob || getItineraryPdfBlob_()] };
+  if (MAIL_FROM_ALIAS) opts.from = MAIL_FROM_ALIAS;
+  GmailApp.sendEmail(to, mail.subject, mail.text, opts);
+}
+
+/** 選單：預覽行前提醒信（寄給自己；用該梯次分頁第一位的資料與桌次，不會寄給其他人、不會標記寄送時間） */
+function previewPreTripReminderDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const session = askSession_(ui, '預覽行前提醒信');
+  if (!session) return;
+  const seatSs = openSeatSpreadsheet_(ui, session, true);
+  if (!seatSs) return;
+  const seats = readSeats_(seatSs, session);
+  const rec = preTripRecipients_(session).list;
+  if (!rec.length) { ui.alert('「' + session + '」分頁沒有資料。'); return; }
+  const first = rec[0].reg;
+  const me = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail();
+  sendPreTripEmail_(first, seats.byEmp[first.empId] || '', me);
+  ui.alert('預覽信已寄到 ' + me + '\n（內容為：' + first.name + '／' + session + '／' + (seats.byEmp[first.empId] || '查無桌次') + '）\n\n' +
+    '確認無誤後，再執行「寄送行前提醒信」。');
+}
+
+/** 選單：寄送行前提醒信給該梯次分頁的所有人（已寄過的略過；寄送前列出名單與需要確認的事項） */
+function sendPreTripReminderDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const session = askSession_(ui, '寄送行前提醒信');
+  if (!session) return;
+  const seatSs = openSeatSpreadsheet_(ui, session, true);
+  if (!seatSs) return;
+  const seats = readSeats_(seatSs, session);
+  const rec = preTripRecipients_(session);
+  const okMail = x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x.reg.email);
+  const bad = rec.list.filter(x => !okMail(x));
+  const pending = rec.list.filter(x => !x.sent && okMail(x));
+  const already = rec.list.filter(x => x.sent).length;
+  if (!pending.length) {
+    ui.alert('沒有需要寄送的對象。\n「' + session + '」分頁共 ' + rec.list.length + ' 位，已寄過 ' + already + ' 位' +
+      (bad.length ? '，E-mail 格式有誤 ' + bad.length + ' 位' : '') + '。');
+    return;
+  }
+  const noSeat = pending.filter(x => !seats.byEmp[x.reg.empId]);
+  const inTab = {};
+  rec.list.forEach(x => { inTab[x.reg.empId] = true; });
+  const notInTab = seats.people.filter(p => !inTab[p.empId]);
+  const warn = [];
+  if (noSeat.length) warn.push('以下 ' + noSeat.length + ' 位在桌次試算表找不到桌次，信中不會顯示桌次：\n　' + noSeat.map(x => x.reg.name).join('、'));
+  if (notInTab.length) warn.push('桌次試算表有、但「' + session + '」分頁沒有的 ' + notInTab.length + ' 位（不會收到信）：\n　' + notInTab.map(p => p.name || p.empId).join('、'));
+  if (bad.length) warn.push('E-mail 格式有誤、不會寄送的 ' + bad.length + ' 位：\n　' + bad.map(x => x.reg.name).join('、'));
+  const lines = pending.map(x => x.reg.name + '｜' + (seats.byEmp[x.reg.empId] || '無桌次') + '｜' + x.reg.email);
+  const ok = ui.alert('確認寄送行前提醒信（' + session + '）',
+    '將寄給 ' + pending.length + ' 位' + (already ? '（另有 ' + already + ' 位已寄過，會略過）' : '') + '，附件：' + PDF_ATTACHMENT_NAME + '\n\n' +
+    lines.join('\n') + (warn.length ? '\n\n⚠️ 請確認：\n' + warn.join('\n') : '') + '\n\n確定寄出？',
+    ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) { ui.alert('寄信作業進行中，請稍候再試。'); return; }
+  let sent = 0;
+  const failed = [];
+  try {
+    const pdf = getItineraryPdfBlob_();
+    pending.forEach(x => {
+      try {
+        sendPreTripEmail_(x.reg, seats.byEmp[x.reg.empId] || '', null, pdf);
+        rec.sheet.getRange(x.row, rec.sentCol).setValue(new Date()).setNumberFormat('yyyy/MM/dd HH:mm:ss');
+        sent++;
+      } catch (err) {
+        failed.push(x.reg.name + '：' + err);
+        Logger.log('行前提醒寄送失敗：' + x.reg.name + '｜' + err);
+      }
+    });
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
+  ui.alert('行前提醒信寄送完成：成功 ' + sent + ' 封' + (failed.length ? '，失敗 ' + failed.length + ' 封：\n' + failed.join('\n') : '') +
+    '\n寄送時間已記在「' + session + '」分頁的「' + PRETRIP_SENT_HEADER + '」欄。');
 }
 
 /* ------------------------------------------------------------------ */
