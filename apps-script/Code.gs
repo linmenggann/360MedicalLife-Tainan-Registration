@@ -191,7 +191,7 @@ function onOpen() {
     .addItem('寄送長官及工作人員行前資訊', 'sendStaffNotificationsDialog')
     .addItem('匯入長官及工作人員至報名資料', 'importStaffRegistrationsDialog')
     .addSeparator()
-    .addItem('預覽行前提醒信（寄給自己）', 'previewPreTripReminderDialog')
+    .addItem('預覽行前提醒信（寄給自己或指定信箱）', 'previewPreTripReminderDialog')
     .addItem('寄送行前提醒信', 'sendPreTripReminderDialog')
     .addSeparator()
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
@@ -1573,16 +1573,26 @@ function preTripRecipients_(session) {
 }
 
 /** 寄出一封行前提醒信 */
-function sendPreTripEmail_(reg, table, overrideTo, pdfBlob) {
+function sendPreTripEmail_(reg, table, overrideTo, pdfBlob, previewNote) {
   const to = overrideTo || reg.email;
-  if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error('E-mail 格式不正確：' + to);
+  const okAddr = a => /^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(a);
+  if (!to || !String(to).split(',').every(a => okAddr(a.trim()))) throw new Error('E-mail 格式不正確：' + to);
   const mail = buildNotificationEmail_(reg, { table: table, surveyUrl: SURVEY_URLS[reg.session] });
-  const opts = { name: MAIL_SENDER_NAME, replyTo: MAIL_REPLY_TO, htmlBody: mail.html, attachments: [pdfBlob || getItineraryPdfBlob_()] };
+  // 預覽信：主旨加上［預覽］，信件最上方註明這是預覽、尚未寄給學員
+  const subject = (previewNote ? '［預覽］' : '') + mail.subject;
+  const text = (previewNote ? '※ ' + previewNote + '\n\n' : '') + mail.text;
+  const html = (previewNote
+    ? '<div style="font-family:微軟正黑體,Microsoft JhengHei,sans-serif;font-size:14px;line-height:1.6;color:#5f4b00;background:#fff3cd;border:1px solid #e6c463;border-radius:6px;padding:8px 12px;margin:0 0 14px;max-width:720px">※ ' + esc_(previewNote) + '</div>'
+    : '') + mail.html;
+  const opts = { name: MAIL_SENDER_NAME, replyTo: MAIL_REPLY_TO, htmlBody: html, attachments: [pdfBlob || getItineraryPdfBlob_()] };
   if (MAIL_FROM_ALIAS) opts.from = MAIL_FROM_ALIAS;
-  GmailApp.sendEmail(to, mail.subject, mail.text, opts);
+  GmailApp.sendEmail(to, subject, text, opts);
 }
 
-/** 選單：預覽行前提醒信（寄給自己；用該梯次分頁第一位的資料與桌次，不會寄給其他人、不會標記寄送時間） */
+/**
+ * 選單：預覽行前提醒信。預設寄給自己，也可以指定信箱（例如請主管過目，可填多個、以逗號分隔）。
+ * 內容用該梯次分頁第一位的資料與桌次；不會寄給學員、不會標記寄送時間。
+ */
 function previewPreTripReminderDialog() {
   const ui = SpreadsheetApp.getUi();
   const session = askSession_(ui, '預覽行前提醒信');
@@ -1594,8 +1604,17 @@ function previewPreTripReminderDialog() {
   if (!rec.length) { ui.alert('「' + session + '」分頁沒有資料。'); return; }
   const first = rec[0].reg;
   const me = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail();
-  sendPreTripEmail_(first, seats.byEmp[first.empId] || '', me);
-  ui.alert('預覽信已寄到 ' + me + '\n（內容為：' + first.name + '／' + session + '／' + (seats.byEmp[first.empId] || '查無桌次') + '）\n\n' +
+  const r = ui.prompt('預覽行前提醒信',
+    '預覽信要寄到哪個信箱？\n留空＝寄給自己（' + me + '）。可填其他信箱請對方過目，多個信箱以逗號分隔。',
+    ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const typed = String(r.getResponseText() || '').normalize('NFKC').split(/[,;，；\s]+/).map(x => x.trim()).filter(Boolean);
+  const invalid = typed.filter(a => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a));
+  if (invalid.length) { ui.alert('E-mail 格式不正確：' + invalid.join('、') + '\n沒有寄出任何信。'); return; }
+  const to = typed.length ? typed.join(',') : me;
+  const note = '這是「' + session + '」行前提醒信的預覽，尚未寄給學員。內容以「' + first.name + '」的報名資料與桌次為例，實際寄出時每個人的姓名、身分、單位、餐食與桌次都是本人的資料。';
+  sendPreTripEmail_(first, seats.byEmp[first.empId] || '', to, null, note);
+  ui.alert('預覽信已寄到 ' + to + '\n（內容為：' + first.name + '／' + session + '／' + (seats.byEmp[first.empId] || '查無桌次') + '）\n\n' +
     '確認無誤後，再執行「寄送行前提醒信」。');
 }
 
