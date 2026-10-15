@@ -41,6 +41,8 @@ const IDENTITIES = ['西醫UGY/醫事職類UGY', '西醫PGY', '醫事職類PGY',
 // 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；未達上限時各身分皆可報名）。
 // 2026-10-08 起統一 40 人，包含長官及工作人員。index.html 與 dashboard.html 以後端回傳的 sessionCaps 為準
 const SESSION_CAPS = { '第一梯次': 40, '第二梯次': 40, '第三梯次': 40 };
+// 停止受理報名的梯次（2026-10-15 起第一梯次停止受理）：報名網頁不能選、後端拒絕報名；管理者加報不受限制
+const CLOSED_SESSIONS = ['第一梯次'];
 // 長官及工作人員：不在報名網頁的身分選單，由選單「匯入長官及工作人員至報名資料」加入；
 // 身分欄保留「長官」「工作人員」，統計時合併為「長官/工作人員」並計入各梯次總人數
 const STAFF_GROUP = '長官/工作人員';
@@ -319,6 +321,7 @@ function countsPayload_(counts) {
     identities: IDENTITIES,                    // 報名網頁可選的身分
     countedIdentities: COUNT_IDENTITIES,       // counts 裡的身分（含長官/工作人員）
     sessionCaps: SESSION_CAPS,                 // 各梯次總報名人數上限（不分身分）
+    closedSessions: CLOSED_SESSIONS,           // 停止受理報名的梯次
     sessions: SESSIONS,
     statsSpreadsheetId: PropertiesService.getScriptProperties().getProperty(STATS_PROP) || '',
     statsSheet: STATS_SHEET,
@@ -405,6 +408,7 @@ function doPost(e) {
 
     if (!empId) return json_({ ok: false, error: 'invalid', message: '人事號不可空白' });
     if (SESSIONS.indexOf(session) === -1) return json_({ ok: false, error: 'invalid', message: '梯次不正確' });
+    if (CLOSED_SESSIONS.indexOf(session) !== -1) return json_({ ok: false, error: 'closed', message: session + '已停止受理報名，請改選其他梯次。' });
     if (IDENTITIES.indexOf(identity) === -1) return json_({ ok: false, error: 'invalid', message: '身分不正確' });
     if (!/^[A-Z][1289]\d{8}$/.test(nationalId)) return json_({ ok: false, error: 'invalid', message: '身分證號格式不正確' });
     if (['葷食', '素食'].indexOf(String(d.meal)) === -1) return json_({ ok: false, error: 'invalid', message: '餐食不正確' });
@@ -1426,6 +1430,7 @@ function publishStats() {
   const out = [['類型', '鍵1', '鍵2', '數值', '更新時間']];
 
   SESSIONS.forEach(s => out.push(['梯次上限', s, '', SESSION_CAPS[s], now]));
+  CLOSED_SESSIONS.forEach(s => out.push(['梯次狀態', s, '', '停止報名', now]));
   SESSIONS.forEach(s => COUNT_IDENTITIES.forEach(k => out.push(['名額', s, k, counts[s][k], now])));
 
   const meals = {}, daily = {}, units = {};

@@ -601,7 +601,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
       <h2>走進臺南，走進生活</h2>
       <p class="tagline">臺南，<em>一座讓人更懂生活的城市</em>。走讀府城街巷、市場、廟宇與聚落，從飲食、信仰、文化與土地認識民眾的生活樣貌，從臺南的日常，拓展照顧的視野。</p>
       <div class="sessions" aria-label="活動梯次">
-        <div class="chip chip-1"><small>第一梯次</small><span>10/17（六）–10/18（日）</span></div>
+        <div class="chip chip-1"><small>第一梯次・已截止報名</small><span>10/17（六）–10/18（日）</span></div>
         <div class="chip chip-2"><small>第二梯次</small><span>11/14（六）–11/15（日）</span></div>
         <div class="chip chip-3"><small>第三梯次</small><span>11/21（六）–11/22（日）</span></div>
         <div class="chip chip-days"><span>民國 115 年｜每梯次 2 日</span></div>
@@ -1022,7 +1022,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
         <div>
           <h4>活動日期（三梯次擇一）</h4>
-          <p>第一梯次｜115/10/17（六）–10/18（日）</p>
+          <p>第一梯次｜115/10/17（六）–10/18（日）（已截止報名）</p>
           <p>第二梯次｜115/11/14（六）–11/15（日）</p>
           <p>第三梯次｜115/11/21（六）–11/22（日）</p>
           <p class="muted">2日活動需全程參與</p>
@@ -1407,6 +1407,10 @@ const IDENTITIES = [
 // 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；統一 40 人，包含長官及工作人員）。
 // 網頁不顯示上限與剩餘人數；載入名額後以後端回傳的 sessionCaps（或公開統計的「梯次上限」）為準
 let SESSION_CAPS = { "第一梯次": 40, "第二梯次": 40, "第三梯次": 40 };
+// 停止受理報名的梯次（2026-10-15 起第一梯次）。載入名額後以後端回傳的 closedSessions（或公開統計的「梯次狀態」）為準
+let CLOSED_SESSIONS = ["第一梯次"];
+function mergeClosedSessions(list){ if (Array.isArray(list)) CLOSED_SESSIONS = Array.from(new Set(CLOSED_SESSIONS.concat(list))); }
+const sessionClosed = s => CLOSED_SESSIONS.includes(s);
 // 長官及工作人員：不在身分選單，但計入各梯次總人數（後端與公開統計的人數裡有這一項）
 const STAFF_GROUP = "長官/工作人員";
 const COUNTED = [STAFF_GROUP].concat(IDENTITIES.map(i => i.key));
@@ -1431,7 +1435,8 @@ function emptyCounts(){
 }
 let counts = emptyCounts();
 let backendOnline = false;
-let quotaView = SESSIONS[0].key;   // 名額區塊目前顯示的梯次
+// 名額區塊目前顯示的梯次：預設為第一個仍受理報名的梯次
+let quotaView = (SESSIONS.find(s => !sessionClosed(s.key)) || SESSIONS[0]).key;
 
 /* ---------- 跑馬燈：複製一份內容以無縫循環 ---------- */
 (function(){
@@ -1538,6 +1543,7 @@ function countsFromStatsRows(rows){
     k2 = canonIdentity(k2);
     if (type === "名額" && c[k1] && c[k1][k2] !== undefined) c[k1][k2] += Number(v) || 0;
     if (type === "梯次上限" && k1 && v !== "") caps[k1] = Number(v);
+    if (type === "梯次狀態" && k1 && /停止/.test(v)) mergeClosedSessions([k1]);
     if (ts) updated = ts;
   });
   mergeSessionCaps(caps);
@@ -1608,6 +1614,7 @@ async function fetchCounts(){
     if (!data || !data.counts) throw new Error("名額資料格式不符");
     apiDone = true;
     mergeSessionCaps(data.sessionCaps);
+    mergeClosedSessions(data.closedSessions);
     setCounts(applyCounts(data.counts), "api");
     backendOnline = true;
   } catch(err){
@@ -1637,11 +1644,11 @@ function sessionFull(session){
 
 /* ---------- 名額：畫面 ---------- */
 function renderQuota(){
-  // 梯次切換鈕（額滿的梯次標示「已額滿」）
+  // 梯次切換鈕（停止報名的梯次標示「已截止報名」，額滿的標示「已額滿」）
   const seg = document.getElementById("quotaSessions");
   seg.innerHTML = SESSIONS.map(s => `
     <button type="button" class="seg-btn" data-session="${s.key}" aria-pressed="${s.key === quotaView}">
-      <b>${s.key}</b><small>${sessionFull(s.key) ? "已額滿" : s.short}</small>
+      <b>${s.key}</b><small>${sessionClosed(s.key) ? "已截止報名" : sessionFull(s.key) ? "已額滿" : s.short}</small>
     </button>`).join("");
   seg.querySelectorAll(".seg-btn").forEach(btn => btn.addEventListener("click", () => {
     quotaView = btn.dataset.session;
@@ -1650,13 +1657,14 @@ function renderQuota(){
 
   // 身分卡片：不顯示剩餘人數；梯次未額滿時各身分皆「尚可報名」，額滿時全部蓋「額滿」章
   const known = countsSource !== "";   // 尚未取得任何名額資料時顯示「載入中」，避免誤以為名額全空
-  const full = sessionFull(quotaView);
+  const closed = sessionClosed(quotaView);
+  const full = closed || sessionFull(quotaView);
   const grid = document.getElementById("quotaGrid");
   grid.innerHTML = IDENTITIES.map(i => `
-      <div class="quota-card ${full ? "is-full" : ""} ${known ? "" : "is-loading"}" style="--q-color:${i.color}">
+      <div class="quota-card ${full ? "is-full" : ""} ${known || closed ? "" : "is-loading"}" style="--q-color:${i.color}">
         <div class="q-name">${i.key.split("/").map(p => `<span class="nw">${p}</span>`).join("/<wbr>")}</div>
-        <div class="q-status">${!known ? "名額載入中…" : full ? "已額滿" : "尚可報名"}</div>
-        <div class="q-full"><span>額滿</span></div>
+        <div class="q-status">${closed ? "已截止報名" : !known ? "名額載入中…" : full ? "已額滿" : "尚可報名"}</div>
+        <div class="q-full"><span>${closed ? "截止" : "額滿"}</span></div>
       </div>`).join("");
 
   // 身分下拉選單：依表單所選梯次顯示「尚可報名」或「已額滿」
@@ -1669,20 +1677,21 @@ function renderQuota(){
     sel.innerHTML = `<option value="" disabled selected>請先選擇梯次</option>`;
   } else {
     sel.disabled = false;
-    const sFull = sessionFull(session);
+    const sClosed = sessionClosed(session);
+    const sFull = sClosed || sessionFull(session);
     sel.innerHTML = `<option value="" disabled ${current ? "" : "selected"}>請選擇身分</option>` +
       IDENTITIES.map(i => {
-        const label = !known ? `${i.key}（名額載入中）` : sFull ? `${i.key}（已額滿）` : `${i.key}（尚可報名）`;
+        const label = sClosed ? `${i.key}（已截止報名）` : !known ? `${i.key}（名額載入中）` : sFull ? `${i.key}（已額滿）` : `${i.key}（尚可報名）`;
         return `<option value="${i.key}" ${sFull ? "disabled" : ""} ${current === i.key && !sFull ? "selected" : ""}>${label}</option>`;
       }).join("");
   }
-  // 梯次下拉選單：額滿的梯次標示「（已額滿）」並停用
+  // 梯次下拉選單：停止報名的梯次標示「（已截止報名）」、額滿的標示「（已額滿）」，並停用
   Array.from(sessionSel.options).forEach(o => {
     const s = SESSIONS.find(x => x.key === o.value);
     if (!s) return;
-    const f = sessionFull(s.key);
-    o.textContent = `${s.key}｜${s.date}${f ? "（已額滿）" : ""}`;
-    o.disabled = f;
+    const c = sessionClosed(s.key), f = sessionFull(s.key);
+    o.textContent = `${s.key}｜${s.date}${c ? "（已截止報名）" : f ? "（已額滿）" : ""}`;
+    o.disabled = c || f;
   });
 
   const pulse = document.getElementById("livePulse");
@@ -1736,7 +1745,7 @@ function setInvalid(el, bad){
 function validateForm(){
   let ok = true;
   const f = document.getElementById("regForm");
-  ok = setInvalid(f.session, !f.session.value || sessionFull(f.session.value)) && ok;
+  ok = setInvalid(f.session, !f.session.value || sessionClosed(f.session.value) || sessionFull(f.session.value)) && ok;
   const identity = f.identity;
   ok = setInvalid(identity, !identity.value) && ok;
   ["unit","name","title","phone"].forEach(n => { ok = setInvalid(f[n], !f[n].value.trim()) && ok; });
@@ -1790,6 +1799,7 @@ async function submitRegistration(payload){
   if (!CONFIG.API_URL){
     // 示範模式：寫入 localStorage
     await new Promise(r => setTimeout(r, 500));
+    if (sessionClosed(payload.session)) return { ok: false, error: "closed" };
     if (sessionFull(payload.session)) return { ok: false, error: "full" };
     let list = [];
     try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch(e){}
@@ -1878,6 +1888,7 @@ document.getElementById("regForm").addEventListener("submit", async e => {
       msg.className = "form-msg error";
       const errMap = {
         full: "很抱歉，該梯次報名人數已額滿，請改選其他梯次或洽教學部詢問候補。",
+        closed: "很抱歉，該梯次已停止受理報名，請改選其他梯次。",
         duplicate: "您已完成報名，每人限報名一個梯次；如需更改梯次請聯絡教學部（分機 57440）。",
         invalid: "資料格式不正確，請檢查後重新送出。"
       };
