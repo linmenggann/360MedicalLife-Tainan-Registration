@@ -810,9 +810,7 @@ function buildNotificationEmail_(reg, pre) {
   notes.forEach(n => t.push('・' + n));
   t.push('');
   t.push('');
-  t.push('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
-  SIGNATURE_LINES.forEach(l => t.push(l));
-  t.push('＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝');
+  signatureText_().forEach(l => t.push(l));
   const text = t.join('\n');
 
   // ---- HTML ----
@@ -858,14 +856,20 @@ function buildNotificationEmail_(reg, pre) {
     '<h3 style="font-size:16px;color:#1f3a3d;border-bottom:2px solid #d9a441;padding-bottom:4px;margin:20px 0 8px">【注意事項】</h3>' +
     important +
     '<ul style="margin:0;padding-left:20px">' + notes.map(n => '<li>' + esc_(n) + '</li>').join('') + '</ul>' +
-    '<br><br>' +
-    '<div style="font-size:13px;color:#5f5a53;line-height:1.6">' +
-    '＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝<br>' +
-    SIGNATURE_LINES.map(esc_).join('<br>') + '<br>' +
-    '＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝' +
-    '</div></div>';
+    '<br><br>' + signatureHtml_() +
+    '</div>';
 
   return { subject: subject, text: text, html: html };
+}
+
+/** 簽名檔（所有通知信共用）：上下各一條分隔線，中間為 SIGNATURE_LINES */
+const SIGNATURE_RULE = '＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝';
+function signatureText_() {
+  return [SIGNATURE_RULE].concat(SIGNATURE_LINES, [SIGNATURE_RULE]);
+}
+function signatureHtml_() {
+  return '<div style="font-size:13px;color:#5f5a53;line-height:1.6">' +
+    SIGNATURE_RULE + '<br>' + SIGNATURE_LINES.map(esc_).join('<br>') + '<br>' + SIGNATURE_RULE + '</div>';
 }
 
 /** 取得行程 PDF 附件（優先雲端硬碟檔案，否則由網址下載） */
@@ -1687,12 +1691,7 @@ const FOLLOWUP = {
     exclude: ['林宏榮']                 // 不寄送（使用者 2026-10-19 指定）
   }
 };
-const FOLLOWUP_SIGNATURE_LINES = [
-  '奇美醫療財團法人奇美醫院',
-  '教學部　林盟淦 教學行政管理員',
-  '電話：06-2812811 分機 57440',
-  'Email：910632@chimei.org.tw'
-];
+// 簽名檔與行前提醒信相同（signatureText_／signatureHtml_；第一梯次寄出後於 2026-10-19 統一）
 
 /** 產生大合照＋問卷提醒信的主旨、純文字與 HTML 內容（全梯次同一封，不含個人資料） */
 function buildFollowupEmail_(session) {
@@ -1719,8 +1718,8 @@ function buildFollowupEmail_(session) {
     '\u{1F381} 加碼小禮物',
     '若您有與教學部或奇美醫院手拉旗合影自拍，並分享至 Facebook、Instagram、Threads 等任一社群媒體，歡迎將貼文截圖上傳至問卷。經教學部確認後，將另行通知領取精美小禮物！', '',
     closing[0], '',
-    closing[1], ''
-  ], FOLLOWUP_SIGNATURE_LINES).join('\n');
+    closing[1], '', ''
+  ], signatureText_()).join('\n');
 
   // ---- HTML ----
   const red = s => '<span style="color:#b4432f">' + s + '</span>';
@@ -1749,8 +1748,7 @@ function buildFollowupEmail_(session) {
     '經教學部確認後，將另行通知領取<b>精美小禮物</b>！</p>' +
     '<p>' + esc_(closing[0]) + '</p>' +
     '<p>' + esc_(closing[1]) + '</p>' +
-    '<br>' +
-    '<div style="font-size:13px;color:#5f5a53;line-height:1.6">' + FOLLOWUP_SIGNATURE_LINES.map(esc_).join('<br>') + '</div>' +
+    '<br><br>' + signatureHtml_() +
     '</div>';
   return { subject: subject, text: text, html: html };
 }
