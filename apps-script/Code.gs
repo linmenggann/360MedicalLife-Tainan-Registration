@@ -195,6 +195,8 @@ function onOpen() {
     .addSeparator()
     .addItem('預覽行前提醒信（寄給自己）', 'previewPreTripReminderDialog')
     .addItem('寄送行前提醒信', 'sendPreTripReminderDialog')
+    .addItem('預覽大合照與問卷提醒信（寄給自己）', 'previewFollowupDialog')
+    .addItem('寄送大合照與問卷提醒信', 'sendFollowupDialog')
     .addSeparator()
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
     .addSeparator()
@@ -1556,14 +1558,19 @@ function readSeats_(seatSs, session) {
 
 /** 該梯次分頁的收件人：[{ row, reg, sent }]；必要時補上「行前提醒寄送時間」欄 */
 function preTripRecipients_(session) {
+  return sessionRecipients_(session, PRETRIP_SENT_HEADER);
+}
+
+/** 該梯次分頁有姓名的每一列：[{ row, reg, sent }]，sent 讀自 sentHeader 欄（沒有這欄會補在最後） */
+function sessionRecipients_(session, sentHeader) {
   const sheet = getSheet_(session);
   const last = sheet.getLastRow();
   let lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
   const head = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
-  let sentCol = head.indexOf(PRETRIP_SENT_HEADER) + 1;
+  let sentCol = head.indexOf(sentHeader) + 1;
   if (!sentCol) {
     sentCol = lastCol + 1;
-    sheet.getRange(1, sentCol).setValue(PRETRIP_SENT_HEADER).setFontWeight('bold');
+    sheet.getRange(1, sentCol).setValue(sentHeader).setFontWeight('bold');
     lastCol = sentCol;
   }
   if (last < 2) return { sheet: sheet, sentCol: sentCol, list: [] };
@@ -1659,6 +1666,197 @@ function sendPreTripReminderDialog() {
   }
   ui.alert('行前提醒信寄送完成：成功 ' + sent + ' 封' + (failed.length ? '，失敗 ' + failed.length + ' 封：\n' + failed.join('\n') : '') +
     '\n寄送時間已記在「' + session + '」分頁的「' + PRETRIP_SENT_HEADER + '」欄。');
+}
+
+/* ------------------------------------------------------------------ */
+/* 大合照提供＋問卷填寫提醒信（各梯次活動結束後寄給該梯次分頁的所有人）  */
+/* ------------------------------------------------------------------ */
+/*
+ * 收件人：該梯次分頁中有姓名與 E-mail 的每一列，扣掉 FOLLOWUP[梯次].exclude 列出的人（依姓名比對）。
+ *         同一個 E-mail 出現在多列時只寄一封。不論是否已填問卷都會寄（信中已說明已完成者無須重複填寫）。
+ * 內容：使用者 2026-10-19 提供的主旨與內文（合照雲端硬碟資料夾、該梯次問卷網址、學分條件、小禮物），沒有附件。
+ * 寄送紀錄：寫在該梯次分頁的「大合照與問卷提醒寄送時間」欄（沒有會自動補在最後），已寄過的人不會重複寄。
+ * 其他梯次要寄時，在 FOLLOWUP 加上該梯次的活動日期與合照資料夾網址即可。
+ */
+const FOLLOWUP_SUBJECT_PREFIX = '【大合照提供+問卷填寫提醒】360°醫學人生｜走進臺南，走進生活';
+const FOLLOWUP_SENT_HEADER = '大合照與問卷提醒寄送時間';
+const FOLLOWUP = {
+  '第一梯次': {
+    dates: '10 月 17 日至 18 日',
+    photoUrl: 'https://drive.google.com/drive/folders/1H3oABkTnx8R6HL1Hb-Hfv_q6FyHXOcD-?usp=sharing',
+    exclude: ['林宏榮']                 // 不寄送（使用者 2026-10-19 指定）
+  }
+};
+const FOLLOWUP_SIGNATURE_LINES = [
+  '奇美醫療財團法人奇美醫院',
+  '教學部　林盟淦 教學行政管理員',
+  '電話：06-2812811 分機 57440',
+  'Email：910632@chimei.org.tw'
+];
+
+/** 產生大合照＋問卷提醒信的主旨、純文字與 HTML 內容（全梯次同一封，不含個人資料） */
+function buildFollowupEmail_(session) {
+  const cfg = FOLLOWUP[session];
+  const surveyUrl = SURVEY_URLS[session];
+  const subject = FOLLOWUP_SUBJECT_PREFIX + '（' + session + '）';
+  const afterTrip = '活動結束後，別忘了完成問卷，分享這趟旅程的感受與建議，作為後續活動規劃與改善的參考。';
+  const stepsIntro = '輸入人事號後，系統將自動帶出報名資料，請完成：';
+  const steps = ['填寫活動滿意度問卷。', '上傳活動照片。', '寫下活動中「最感動的一段話」。'];
+  const pending = '尚未完成的學員，敬請撥空填寫；已完成者無須重複填寫。';
+  const closing = ['再次感謝大家的參與，期待這兩天的見聞與感動，持續為日常生活及臨床照護帶來新的啟發！', '如有任何問題，歡迎與教學部聯繫。'];
+
+  // ---- 純文字 ----
+  const text = [
+    '各位學員好：', '',
+    '感謝大家參與 ' + cfg.dates + '「360°醫學人生｜走進臺南，走進生活」' + session + '活動，與我們一起走訪府城、體驗聚落文化，留下美好的回憶！', '',
+    '\u{1F4F8} 活動合照', cfg.photoUrl, '',
+    afterTrip, '',
+    '\u{1F4CB} 活動滿意度問卷', surveyUrl, '',
+    stepsIntro, ''
+  ].concat(steps.map((s, i) => (i + 1) + '. ' + s), [
+    '',
+    '提醒您：須兩天全程參與，並完成上述項目，始得核予學分。' + pending, '',
+    '\u{1F381} 加碼小禮物',
+    '若您有與教學部或奇美醫院手拉旗合影自拍，並分享至 Facebook、Instagram、Threads 等任一社群媒體，歡迎將貼文截圖上傳至問卷。經教學部確認後，將另行通知領取精美小禮物！', '',
+    closing[0], '',
+    closing[1], ''
+  ], FOLLOWUP_SIGNATURE_LINES).join('\n');
+
+  // ---- HTML ----
+  const red = s => '<span style="color:#b4432f">' + s + '</span>';
+  const h3 = (icon, title) => '<h3 style="font-size:16px;color:#1f3a3d;border-bottom:2px solid #d9a441;padding-bottom:4px;margin:20px 0 8px">' + icon + ' ' + esc_(title) + '</h3>';
+  const link = url => '<p style="margin:6px 0 10px"><a href="' + esc_(url) + '" style="color:#b4432f;font-weight:bold;word-break:break-all">' + esc_(url) + '</a></p>';
+  const html =
+    '<div style="font-family:微軟正黑體,Microsoft JhengHei,PingFang TC,sans-serif;font-size:15px;line-height:1.7;color:#2b2a28;max-width:720px">' +
+    '<div style="border-left:6px solid #b4432f;padding:6px 14px;margin-bottom:16px;background:#fbf7ee">' +
+    '<div style="font-size:14px;color:#8a2f22;letter-spacing:.1em">奇美醫院教學部</div>' +
+    '<div style="font-size:24px;font-weight:bold;color:#1f3a3d">360°醫學人生｜走進臺南，走進生活</div>' +
+    '<div style="font-size:16px;color:#b4432f;font-weight:bold">大合照提供＋問卷填寫提醒（' + esc_(session) + '）</div>' +
+    '</div>' +
+    '<p>各位學員好：</p>' +
+    '<p>感謝大家參與 <b style="color:#b4432f">' + esc_(cfg.dates) + '</b>「<b>360°醫學人生｜走進臺南，走進生活</b>」<b style="color:#b4432f">' + esc_(session) + '</b>活動，' +
+    '與我們一起走訪府城、體驗聚落文化，留下美好的回憶！</p>' +
+    h3('&#x1F4F8;', '活動合照') + link(cfg.photoUrl) +
+    '<p>' + esc_(afterTrip) + '</p>' +
+    h3('&#x1F4CB;', '活動滿意度問卷') + link(surveyUrl) +
+    '<p style="margin-bottom:4px">' + esc_(stepsIntro) + '</p>' +
+    '<ol style="margin:0 0 12px;padding-left:24px">' + steps.map(s => '<li>' + esc_(s) + '</li>').join('') + '</ol>' +
+    '<div style="border:2px solid #b4432f;background:#fff8e1;border-radius:8px;padding:12px 16px;margin:12px 0">' +
+    '<b>提醒您：須' + red('兩天全程參與') + '，並完成上述項目，<span style="color:#b4432f;text-decoration:underline">始得核予學分</span>。</b>' +
+    esc_(pending) + '</div>' +
+    h3('&#x1F381;', '加碼小禮物') +
+    '<p>若您有與<b>教學部</b>或<b>奇美醫院手拉旗</b>合影自拍，並分享至 Facebook、Instagram、Threads 等任一社群媒體，歡迎將<b>貼文截圖</b>上傳至問卷。' +
+    '經教學部確認後，將另行通知領取<b>精美小禮物</b>！</p>' +
+    '<p>' + esc_(closing[0]) + '</p>' +
+    '<p>' + esc_(closing[1]) + '</p>' +
+    '<br>' +
+    '<div style="font-size:13px;color:#5f5a53;line-height:1.6">' + FOLLOWUP_SIGNATURE_LINES.map(esc_).join('<br>') + '</div>' +
+    '</div>';
+  return { subject: subject, text: text, html: html };
+}
+
+/** 詢問梯次，並確認該梯次已在 FOLLOWUP 設定合照資料夾 */
+function askFollowupSession_(ui, title) {
+  const session = askSession_(ui, title);
+  if (!session) return null;
+  if (!FOLLOWUP[session]) {
+    ui.alert('「' + session + '」尚未設定活動日期與合照資料夾網址，請先在 Code.gs 的 FOLLOWUP 加上設定。');
+    return null;
+  }
+  return session;
+}
+
+/** 寄送名單：扣掉不寄送的人，依 E-mail 合併（同一信箱只寄一封）；pending＝尚未寄過 */
+function followupPlan_(session) {
+  const cfg = FOLLOWUP[session];
+  const rec = sessionRecipients_(session, FOLLOWUP_SENT_HEADER);
+  const key = s => String(s == null ? '' : s).normalize('NFKC').replace(/\s+/g, '');
+  const excludeKeys = (cfg.exclude || []).map(key);
+  const excluded = rec.list.filter(x => excludeKeys.indexOf(key(x.reg.name)) !== -1);
+  const missingExclude = (cfg.exclude || []).filter(n => !excluded.some(x => key(x.reg.name) === key(n)));
+  const rest = rec.list.filter(x => excluded.indexOf(x) === -1);
+  const okMail = e => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+  const bad = rest.filter(x => !okMail(x.reg.email));
+  const byMail = {}, groups = [];
+  rest.filter(x => okMail(x.reg.email)).forEach(x => {
+    const k = x.reg.email.toLowerCase();
+    if (!byMail[k]) { byMail[k] = { email: x.reg.email, names: [], rows: [], sent: false }; groups.push(byMail[k]); }
+    const g = byMail[k];
+    if (g.names.indexOf(x.reg.name) === -1) g.names.push(x.reg.name);
+    g.rows.push(x.row);
+    if (x.sent) g.sent = true;
+  });
+  return {
+    sheet: rec.sheet, sentCol: rec.sentCol, excluded: excluded, missingExclude: missingExclude, bad: bad,
+    pending: groups.filter(g => !g.sent), already: groups.filter(g => g.sent)
+  };
+}
+
+function sendFollowupEmail_(mail, to) {
+  const opts = { name: MAIL_SENDER_NAME, replyTo: MAIL_REPLY_TO, htmlBody: mail.html };
+  if (MAIL_FROM_ALIAS) opts.from = MAIL_FROM_ALIAS;
+  GmailApp.sendEmail(to, mail.subject, mail.text, opts);
+}
+
+/** 選單：預覽大合照＋問卷提醒信（只寄給自己，不會寄給其他人、不會標記寄送時間） */
+function previewFollowupDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const session = askFollowupSession_(ui, '預覽大合照與問卷提醒信');
+  if (!session) return;
+  const me = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail();
+  sendFollowupEmail_(buildFollowupEmail_(session), me);
+  const plan = followupPlan_(session);
+  ui.alert('預覽信已寄到 ' + me + '\n\n正式寄送時預計寄給「' + session + '」分頁的 ' + plan.pending.length + ' 位' +
+    (plan.already.length ? '（另有 ' + plan.already.length + ' 位已寄過）' : '') +
+    (plan.excluded.length ? '\n不寄送：' + plan.excluded.map(x => x.reg.name).join('、') : '') +
+    '\n\n確認無誤後，再執行「寄送大合照與問卷提醒信」。');
+}
+
+/** 選單：寄送大合照＋問卷提醒信給該梯次分頁的所有人（已寄過的略過；寄送前列出名單） */
+function sendFollowupDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const session = askFollowupSession_(ui, '寄送大合照與問卷提醒信');
+  if (!session) return;
+  const plan = followupPlan_(session);
+  const exNames = plan.excluded.map(x => x.reg.name).join('、');
+  if (!plan.pending.length) {
+    ui.alert('沒有需要寄送的對象。\n「' + session + '」分頁已寄過 ' + plan.already.length + ' 位' +
+      (exNames ? '，不寄送：' + exNames : '') + (plan.bad.length ? '，E-mail 格式有誤 ' + plan.bad.length + ' 位' : '') + '。');
+    return;
+  }
+  const warn = [];
+  if (plan.missingExclude.length) warn.push('設定為不寄送、但「' + session + '」分頁找不到的姓名（請確認是否寫錯）：' + plan.missingExclude.join('、'));
+  if (plan.bad.length) warn.push('E-mail 格式有誤、不會寄送的 ' + plan.bad.length + ' 位：\n　' + plan.bad.map(x => x.reg.name).join('、'));
+  const lines = plan.pending.map(g => g.names.join('、') + '｜' + g.email);
+  const ok = ui.alert('確認寄送大合照與問卷提醒信（' + session + '）',
+    '將寄給 ' + plan.pending.length + ' 位' + (plan.already.length ? '（另有 ' + plan.already.length + ' 位已寄過，會略過）' : '') +
+    (exNames ? '\n不寄送：' + exNames : '') + '\n\n' +
+    lines.join('\n') + (warn.length ? '\n\n⚠️ 請確認：\n' + warn.join('\n') : '') + '\n\n確定寄出？',
+    ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) { ui.alert('寄信作業進行中，請稍候再試。'); return; }
+  let sent = 0;
+  const failed = [];
+  try {
+    const mail = buildFollowupEmail_(session);
+    plan.pending.forEach(g => {
+      try {
+        sendFollowupEmail_(mail, g.email);
+        g.rows.forEach(r => plan.sheet.getRange(r, plan.sentCol).setValue(new Date()).setNumberFormat('yyyy/MM/dd HH:mm:ss'));
+        sent++;
+      } catch (err) {
+        failed.push(g.names.join('、') + '：' + err);
+        Logger.log('大合照與問卷提醒寄送失敗：' + g.names.join('、') + '｜' + err);
+      }
+    });
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
+  ui.alert('大合照與問卷提醒信寄送完成：成功 ' + sent + ' 封' + (failed.length ? '，失敗 ' + failed.length + ' 封：\n' + failed.join('\n') : '') +
+    '\n寄送時間已記在「' + session + '」分頁的「' + FOLLOWUP_SENT_HEADER + '」欄。');
 }
 
 /* ------------------------------------------------------------------ */
