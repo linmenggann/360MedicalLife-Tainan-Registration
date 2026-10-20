@@ -1191,6 +1191,8 @@ function openStaffSpreadsheet_(ui, askAlways) {
  * 加入報名試算表的「活動報名資料」與各梯次分頁。
  * - 身分保留「長官」「工作人員」；統計時合併為「長官/工作人員」，計入各梯次總人數上限。
  * - 「通知寄送時間」填入匯入時間：報名成功／行前資訊已另行寄送，背景作業不會再寄。
+ * - 匯入時可指定要寄送報名成功／行前資訊（附行程 PDF）的人（輸入姓名；使用者 2026-10-20 要求），
+ *   匯入後立即寄出，「通知寄送時間」改為實際寄出時間；寄送失敗的人會清空寄送時間，可用「補寄尚未通知的報名者」重寄。
  * - 同梯次已有相同人事號或身分證號的資料會略過，可以重複執行。
  * - 和學員一樣出現在公開的問卷查詢名單，也能填寫活動滿意度調查（使用者 2026-10-08 要求）。
  * - 名單試算表的「活動報名資料」分頁只用來核對（與三個梯次分頁的人是否一致），不另外匯入，避免重複。
@@ -1208,13 +1210,64 @@ function importStaffRegistrationsDialog() {
     const xs = plan.add.filter(x => x.session === s);
     return xs.length ? s + ' ' + xs.length + ' 位：' + xs.map(x => x.name + '（' + x.identity + '）').join('、') : '';
   }).filter(Boolean);
+
+  // 要寄送報名成功／行前資訊的人（輸入姓名；留空＝都不寄）
+  const r = ui.prompt('匯入後寄送報名成功／行前資訊',
+    '本次匯入：' + plan.add.map(x => x.name).join('、') + '\n\n' +
+    '要寄送「報名成功／行前資訊」E-mail（附行程 PDF）的人，請輸入姓名，多位以「、」分隔。\n全部都不寄請留空。',
+    ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const nameKey = s => String(s == null ? '' : s).normalize('NFKC').replace(/\s+/g, '');
+  const wanted = String(r.getResponseText()).split(/[、,，;；\n]+/).map(nameKey).filter(Boolean);
+  const unknown = wanted.filter(n => !plan.add.some(x => nameKey(x.name) === n));
+  if (unknown.length) { ui.alert('以下姓名不在本次匯入名單中，請確認後再執行一次：\n' + unknown.join('、')); return; }
+  plan.add.forEach(x => { x.mail = wanted.indexOf(nameKey(x.name)) !== -1; });
+  const toMail = plan.add.filter(x => x.mail);
+  const badMail = toMail.filter(x => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(x.row[COL['E-mail'] - 1]).trim()));
+  if (badMail.length) { ui.alert('以下人員的 E-mail 格式有誤，無法寄送，請先修正名單試算表：\n' + badMail.map(x => x.name).join('、')); return; }
+  const mailText = toMail.length
+    ? '匯入後寄送「報名成功／行前資訊」E-mail（附行程 PDF）給 ' + toMail.length + ' 位：\n' +
+      toMail.map(x => x.name + '｜' + String(x.row[COL['E-mail'] - 1]).trim()).join('\n') +
+      (toMail.length < plan.add.length ? '\n其他人不寄送（通知寄送時間填入匯入時間）。' : '')
+    : '不會寄送報名成功／行前資訊 E-mail（通知寄送時間會填入匯入時間）。';
+
   const ok = ui.alert('匯入長官及工作人員',
     '將加入「活動報名資料」與各梯次分頁，共 ' + plan.add.length + ' 位：\n\n' + lines.join('\n') +
-    '\n\n不會寄送報名成功／行前資訊 E-mail（通知寄送時間會填入匯入時間）。' + notes + warns + '\n\n確定匯入？',
+    '\n\n' + mailText + notes + warns + '\n\n確定匯入？',
     ui.ButtonSet.YES_NO);
   if (ok !== ui.Button.YES) return;
-  const n = importStaffRows_(plan.add);
-  ui.alert('已匯入 ' + n + ' 位長官及工作人員。\n儀表板與報名網頁約 1 分鐘內更新（各梯次總人數已包含長官及工作人員）。');
+
+  // 寄信期間持有 UserLock：背景補寄作業（同一把鎖）不會同時寄出同一封
+  const mailLock = toMail.length ? LockService.getUserLock() : null;
+  if (mailLock && !mailLock.tryLock(60000)) { ui.alert('另一個寄信作業正在執行，請稍後再試（尚未匯入）。'); return; }
+  let res, mailMsg = '';
+  try {
+    res = importStaffRows_(plan.add);
+    if (res.mail.length) {
+      let sent = 0;
+      const failed = [];
+      const pdfBlob = getItineraryPdfBlob_();   // 附件只下載一次
+      res.mail.forEach(m => {
+        try {
+          sendNotificationEmail_(m.reg, null, pdfBlob);
+          const stamp = new Date();
+          m.rows.forEach(([sh, row]) => sh.getRange(row, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss'));
+          sent++;
+        } catch (err) {
+          m.rows.forEach(([sh, row]) => sh.getRange(row, COL['通知寄送時間']).setValue(''));   // 清空，可用「補寄尚未通知的報名者」重寄
+          failed.push(m.reg.name + '（' + err + '）');
+          Logger.log('長官及工作人員匯入後寄送失敗 ' + m.reg.name + ' <' + m.reg.email + '>：' + err);
+        }
+      });
+      SpreadsheetApp.flush();
+      mailMsg = '\n報名成功／行前資訊 E-mail：成功 ' + sent + ' 封' +
+        (failed.length ? '，失敗 ' + failed.length + ' 封：\n' + failed.join('\n') + '\n（失敗者的通知寄送時間已清空，可執行「補寄尚未通知的報名者」重寄）' : '') + '。';
+    }
+  } finally {
+    if (mailLock) mailLock.releaseLock();
+  }
+  ui.alert('已匯入 ' + res.n + ' 位長官及工作人員。' + mailMsg +
+    '\n儀表板與報名網頁約 1 分鐘內更新（各梯次總人數已包含長官及工作人員）。');
 }
 
 /** 讀取名單並決定要匯入哪些人（不寫入） */
@@ -1276,20 +1329,27 @@ function planStaffImport_(staffSs) {
   return { add: add, skipped: skipped, warnings: warnings };
 }
 
-/** 寫入（鎖定期間）；回傳匯入人數 */
+/**
+ * 寫入（鎖定期間）；回傳 { n: 匯入人數, mail: [{ reg, rows: [[分頁, 列號], …] }] }。
+ * x.mail 為 true 的人由呼叫端寄送報名成功／行前資訊；寄出前先填匯入時間，背景補寄作業不會搶先寄出。
+ */
 function importStaffRows_(items) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
+  const mail = [];
   try {
     const master = getSheet_(MASTER_SHEET);
     const now = new Date();
     ensureExtraHeaders_();
     items.forEach(x => {
       const row = x.row.slice();
-      row[COL['通知寄送時間'] - 1] = now;               // 已另行寄送，背景作業不會再寄
-      row[COL['備註'] - 1] = [String(row[COL['備註'] - 1] || '').trim(), '長官/工作人員匯入（報名成功及行前資訊已另行寄送）'].filter(Boolean).join('；');
-      appendRow_(master, row);
-      appendRow_(getSheet_(x.session), row);
+      row[COL['通知寄送時間'] - 1] = now;               // 已另行寄送（或由呼叫端隨即寄送），背景作業不會再寄
+      const note = x.mail ? '長官/工作人員匯入（報名成功及行前資訊由系統寄送）' : '長官/工作人員匯入（報名成功及行前資訊已另行寄送）';
+      row[COL['備註'] - 1] = [String(row[COL['備註'] - 1] || '').trim(), note].filter(Boolean).join('；');
+      const sessionSheet = getSheet_(x.session);
+      const rm = appendRow_(master, row);
+      const rs = appendRow_(sessionSheet, row);
+      if (x.mail) mail.push({ reg: rowToReg_(row), rows: [[master, rm], [sessionSheet, rs]] });
     });
     SpreadsheetApp.flush();
     try { refreshCaches_(); } catch (e) { clearCache_(); }
@@ -1297,7 +1357,7 @@ function importStaffRows_(items) {
     lock.releaseLock();
   }
   try { publishStats(); } catch (e) { Logger.log('publishStats 失敗：' + e); }
-  return items.length;
+  return { n: items.length, mail: mail };
 }
 
 /** 選單：寄送長官及工作人員的報名成功／行前資訊（已寄過的會略過） */
