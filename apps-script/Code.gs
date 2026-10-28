@@ -199,6 +199,7 @@ function onOpen() {
     .addItem('寄送大合照與問卷提醒信', 'sendFollowupDialog')
     .addSeparator()
     .addItem('管理者加報梯次（同一人多梯次）', 'adminAddSessionsDialog')
+    .addItem('更改梯次（可重寄報名成功信）', 'changeSessionDialog')
     .addSeparator()
     .addItem('建立活動滿意度調查分頁＋檢查雲端硬碟資料夾', 'setupSurvey')
     .addItem('清除未完成送出的暫存照片（超過 1 天）', 'cleanupSurveyUploads')
@@ -1098,19 +1099,162 @@ function adminAddSessions(empId, targetSessions) {
   return { added, skipped, message };
 }
 
+/* ------------------------------------------------------------------ */
+/* 管理者更改梯次（使用者 2026-10-28 要求）                            */
+/* ------------------------------------------------------------------ */
+/**
+ * 選單：輸入姓名或人事號 → 逐一輸入新梯次 → 確認後
+ *   - 「活動報名資料」該列的梯次改為新梯次（報名時間不變），備註註明原梯次
+ *   - 從舊梯次分頁刪除該列、在新梯次分頁新增一列；行前提醒等寄送紀錄不帶過去，新梯次的行前提醒會寄給他
+ *   - 可選擇寄送新梯次的「報名成功／行前資訊」E-mail（附行程 PDF），通知寄送時間改為實際寄出時間
+ *   - 更新快取與公開統計（報名網頁、儀表板、問卷查詢名單）
+ * 檢查：新梯次更改後的總人數不可超過上限；不能改到停止受理報名的梯次；
+ *       同名多筆或同一人報名多個梯次時，請改輸入人事號或手動處理。
+ */
+function changeSessionDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const r1 = ui.prompt('更改梯次', '請輸入要更改梯次的人：姓名或人事號，多位以「、」分隔。', ui.ButtonSet.OK_CANCEL);
+  if (r1.getSelectedButton() !== ui.Button.OK) return;
+  const tokens = String(r1.getResponseText()).split(/[、,，;；\n]+/).map(s => s.trim()).filter(Boolean);
+  if (!tokens.length) return;
+
+  const rows = readMaster_(getSheet_(MASTER_SHEET));
+  const nameKey = s => String(s == null ? '' : s).normalize('NFKC').replace(/\s+/g, '');
+  const brief = r => String(r[COL['姓名'] - 1]).trim() + '｜' + String(r[COL['梯次'] - 1]).trim() + '｜' +
+    canonIdentity_(r[COL['身分'] - 1]) + '｜' + String(r[COL['單位'] - 1]).trim() + '｜人事號 ' + normalizeId(r[COL['人事號'] - 1]);
+  const moves = [], problems = [];
+  tokens.forEach(t => {
+    let hit = rows.filter(r => normalizeId(r[COL['人事號'] - 1]) === normalizeId(t));
+    if (!hit.length) hit = rows.filter(r => nameKey(r[COL['姓名'] - 1]) === nameKey(t));
+    if (!hit.length) { problems.push('「' + t + '」：報名資料中找不到這個姓名或人事號。'); return; }
+    const ids = hit.map(r => normalizeId(r[COL['人事號'] - 1])).filter((x, i, a) => a.indexOf(x) === i);
+    if (ids.length > 1) { problems.push('「' + t + '」有 ' + hit.length + ' 位同名，請改輸入人事號：\n　' + hit.map(brief).join('\n　')); return; }
+    if (hit.length > 1) { problems.push('「' + t + '」同時報名了 ' + hit.map(r => String(r[COL['梯次'] - 1]).trim()).join('、') + '，無法判斷要更改哪一梯次，請手動處理。'); return; }
+    const r = hit[0], empId = normalizeId(r[COL['人事號'] - 1]);
+    if (moves.some(m => m.empId === empId)) return;
+    moves.push({ empId: empId, name: String(r[COL['姓名'] - 1]).trim(), identity: canonIdentity_(r[COL['身分'] - 1]),
+      unit: String(r[COL['單位'] - 1]).trim(), email: String(r[COL['E-mail'] - 1]).trim(), from: String(r[COL['梯次'] - 1]).trim() });
+  });
+  if (problems.length) { ui.alert('無法更改梯次', problems.join('\n\n'), ui.ButtonSet.OK); return; }
+
+  // 逐一詢問新梯次
+  for (const m of moves) {
+    const r = ui.prompt('更改梯次', m.name + '（' + m.identity + '｜' + m.unit + '）目前是' + m.from + '，要改成哪一梯次？\n請輸入 1、2 或 3。', ui.ButtonSet.OK_CANCEL);
+    if (r.getSelectedButton() !== ui.Button.OK) return;
+    m.to = parseSessionInput_(r.getResponseText())[0] || '';
+    if (SESSIONS.indexOf(m.to) === -1) { ui.alert('梯次不正確：' + r.getResponseText() + '\n沒有更改任何資料。'); return; }
+    if (m.to === m.from) { ui.alert(m.name + '已經是' + m.from + '，沒有更改任何資料。'); return; }
+    if (CLOSED_SESSIONS.indexOf(m.to) !== -1) { ui.alert(m.to + '已停止受理報名，不能改到這個梯次。\n沒有更改任何資料。'); return; }
+  }
+
+  // 名額：套用所有更改後再檢查
+  const counts = countsFromRows_(rows);
+  moves.forEach(m => { counts[m.from][countIdentity_(m.identity)]--; counts[m.to][countIdentity_(m.identity)]++; });
+  const touched = SESSIONS.filter(s => moves.some(m => m.from === s || m.to === s));
+  const over = touched.filter(s => sessionTotal_(counts, s) > SESSION_CAPS[s]);
+  if (over.length) {
+    ui.alert('無法更改梯次', over.map(s => s + '更改後將有 ' + sessionTotal_(counts, s) + ' 人，超過上限 ' + SESSION_CAPS[s] + ' 人。').join('\n') + '\n沒有更改任何資料。', ui.ButtonSet.OK);
+    return;
+  }
+
+  const choice = ui.alert('確認更改梯次',
+    moves.map(m => m.name + '｜' + m.identity + '｜' + m.from + ' → ' + m.to + '｜' + m.email).join('\n') +
+    '\n\n更改後人數：' + touched.map(s => s + ' ' + sessionTotal_(counts, s) + '/' + SESSION_CAPS[s]).join('、') +
+    '\n\n按「是」：更改梯次，並寄送新梯次的「報名成功／行前資訊」E-mail（附行程 PDF）' +
+    '\n按「否」：只更改梯次，不寄信' +
+    '\n按「取消」：不更改',
+    ui.ButtonSet.YES_NO_CANCEL);
+  if (choice !== ui.Button.YES && choice !== ui.Button.NO) return;
+
+  const res = changeSessions_(moves, choice === ui.Button.YES);
+  ui.alert('更改梯次結果', res.message, ui.ButtonSet.OK);
+}
+
+/** 執行更改梯次；sendMail 為 true 時寄送新梯次的報名成功／行前資訊。回傳 { done, message } */
+function changeSessions_(moves, sendMail) {
+  const done = [], lines = [];
+  // 寄信期間持有 UserLock：背景補寄作業（同一把鎖）不會同時寄出同一封
+  const mailLock = sendMail ? LockService.getUserLock() : null;
+  if (mailLock && !mailLock.tryLock(60000)) return { done: done, message: '另一個寄信作業正在執行，請稍後再試（沒有更改任何資料）。' };
+  try {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      const master = getSheet_(MASTER_SHEET);
+      ensureExtraHeaders_();
+      const data = master.getRange(2, 1, master.getLastRow() - 1, HEADERS.length).getValues();
+      const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd');
+      moves.forEach(m => {
+        const i = data.findIndex(r => sameEmpId_(r[COL['人事號'] - 1], m.empId) && String(r[COL['梯次'] - 1]).trim() === m.from);
+        if (i === -1) { lines.push(m.name + '：總表找不到' + m.from + '的資料（可能已被更改），略過。'); return; }
+        const row = data[i];
+        row[COL['梯次'] - 1] = m.to;
+        row[COL['備註'] - 1] = [String(row[COL['備註'] - 1] || '').trim(), today + ' 由' + m.from + '改為' + m.to].filter(Boolean).join('；');
+        master.getRange(i + 2, COL['梯次']).setValue(m.to);           // 只改梯次與備註，其他欄位（人事號等文字欄）不重寫
+        master.getRange(i + 2, COL['備註']).setValue(row[COL['備註'] - 1]);
+        const oldSheet = getSheet_(m.from);
+        const oldRow = findSessionRow_(oldSheet, m.empId);
+        if (oldRow) oldSheet.deleteRow(oldRow);
+        else lines.push(m.name + '：「' + m.from + '」分頁找不到原列（已在新梯次分頁新增）。');
+        m.newSheet = getSheet_(m.to);
+        appendRow_(m.newSheet, row);
+        m.masterRow = i + 2;            // 總表不刪列，列號固定；梯次分頁的列號在互換梯次時會因刪列而移動，寄送時再以人事號重新找
+        m.reg = rowToReg_(row);
+        done.push(m);
+      });
+      SpreadsheetApp.flush();
+      try { refreshCaches_(); } catch (e) { clearCache_(); }
+    } finally {
+      lock.releaseLock();
+    }
+
+    if (sendMail && done.length) {
+      const pdfBlob = getItineraryPdfBlob_();   // 附件只下載一次
+      const cells = m => [[getSheet_(MASTER_SHEET), m.masterRow], [m.newSheet, findSessionRow_(m.newSheet, m.empId)]]
+        .filter(([, r]) => r).map(([sh, r]) => sh.getRange(r, COL['通知寄送時間']));
+      done.forEach(m => {
+        try {
+          sendNotificationEmail_(m.reg, null, pdfBlob);
+          const stamp = new Date();
+          cells(m).forEach(c => c.setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss'));
+          m.mail = '已寄送報名成功／行前資訊';
+        } catch (err) {
+          cells(m).forEach(c => c.setValue(''));   // 清空，可用「補寄尚未通知的報名者」重寄
+          m.mail = '寄送失敗（' + err + '），通知寄送時間已清空，可執行「補寄尚未通知的報名者」重寄';
+          Logger.log('更改梯次後寄送失敗 ' + m.name + ' <' + m.email + '>：' + err);
+        }
+      });
+      SpreadsheetApp.flush();
+    }
+  } finally {
+    if (mailLock) mailLock.releaseLock();
+  }
+  try { publishStats(); } catch (e) { Logger.log('publishStats 失敗：' + e); }
+
+  const out = done.map(m => m.name + '：' + m.from + ' → ' + m.to + (m.mail ? '（' + m.mail + '）' : '（未寄信）')).concat(lines);
+  if (done.length) out.push('\n行前提醒寄送前，請確認新梯次的桌次表有這幾位。');
+  const staff = done.filter(m => isStaff_(m.identity));
+  if (staff.length) out.push('長官及工作人員名單試算表中，' + staff.map(m => m.name).join('、') + '仍在原梯次；日後若再用該名單執行「匯入長官及工作人員」，請先在名單中更新梯次。');
+  const message = out.join('\n');
+  Logger.log(message);
+  return { done: done, message: message };
+}
+
+/** 在梯次分頁找到同一人事號的列號（找不到回傳 0） */
+function findSessionRow_(sheet, empId) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const ids = sheet.getRange(2, COL['人事號'], last - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) if (sameEmpId_(ids[i][0], empId)) return i + 2;
+  return 0;
+}
+
 /** 在梯次分頁找到同一人事號的列，標記通知寄送時間 */
 function markSessionNotified_(reg, stamp) {
   const sheet = ss_().getSheetByName(reg.session);
   if (!sheet) return;
-  const last = sheet.getLastRow();
-  if (last < 2) return;
-  const ids = sheet.getRange(2, COL['人事號'], last - 1, 1).getValues();
-  for (let i = 0; i < ids.length; i++) {
-    if (sameEmpId_(ids[i][0], reg.empId)) {
-      sheet.getRange(i + 2, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
-      return;
-    }
-  }
+  const r = findSessionRow_(sheet, reg.empId);
+  if (r) sheet.getRange(r, COL['通知寄送時間']).setValue(stamp).setNumberFormat('yyyy/MM/dd HH:mm:ss');
 }
 
 /* ------------------------------------------------------------------ */
