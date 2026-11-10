@@ -2082,6 +2082,10 @@ const SURVEY_SHEETS = {
   '第二梯次': '第二梯次活動滿意度調查',
   '第三梯次': '第三梯次活動滿意度調查'
 };
+// 停止受理填寫問卷的梯次（活動已結束；2026-11-10 起第一梯次）：拒絕查詢、照片上傳與送出（已寫入的送出代碼仍回覆成功）。
+// 問卷網頁 assets/survey.js 的 SESSIONS 也要設定 closed: true，頁面才會顯示「已停止受理填寫」
+const SURVEY_CLOSED = ['第一梯次'];
+const surveyClosed_ = session => ({ ok: false, error: 'closed', message: session + '活動滿意度調查已停止受理填寫。如有問題，請洽教學部（分機 57440）。' });
 // 雲端硬碟資料夾 ID：photo＝活動照、social＝社群媒體截圖
 const SURVEY_FOLDERS = {
   '第一梯次': { photo: '1G1GoZ-_st3ScsuhskrUet2ef-ANVz4Ty', social: '16ASsU_J_i3KH_UsULzJLxC0lPFZ9rbtw' },
@@ -2209,6 +2213,7 @@ const surveyRecord_ = r => ({ session: r.session, identity: canonIdentity_(r.ide
 function surveyLookup_(session, empId) {
   session = String(session || '').trim();
   if (!SURVEY_SHEETS[session]) return { ok: false, error: 'invalid', message: '梯次不正確' };
+  if (SURVEY_CLOSED.indexOf(session) !== -1) return surveyClosed_(session);
   const id = normalizeId(empId);
   if (!id) return { ok: false, error: 'invalid', message: '請填寫人事號' };
   let found = findRegistration_(session, id, registrationList_(false));
@@ -2312,6 +2317,7 @@ function surveyUploadArgs_(p) {
   const sid = String(p.submissionId || p.id || '').trim();
   const kind = String(p.kind || '').trim();
   if (!SURVEY_SHEETS[session]) return { error: { ok: false, error: 'invalid', message: '梯次不正確' } };
+  if (SURVEY_CLOSED.indexOf(session) !== -1) return { error: surveyClosed_(session) };
   if (!validSid_(sid)) return { error: { ok: false, error: 'invalid', message: '送出代碼不正確，請重新整理頁面。' } };
   if (!SURVEY_KINDS[kind]) return { error: { ok: false, error: 'invalid', message: '上傳類別不正確' } };
   return { session: session, sid: sid, kind: kind };
@@ -2446,6 +2452,10 @@ function submitSurvey_(d) {
   if (!SURVEY_SHEETS[session]) return { ok: false, error: 'invalid', message: '梯次不正確' };
   const submissionId = String(d.submissionId || '').trim();
   if (!validSid_(submissionId)) return { ok: false, error: 'invalid', message: '送出代碼不正確，請重新整理頁面後再送出。' };
+  if (SURVEY_CLOSED.indexOf(session) !== -1) {
+    const st = surveyStatus_(session, submissionId);          // 停止前已寫入、只是回應遺失的送出，仍回覆成功
+    return st.found ? { ok: true, submitted: true, no: st.no, repeated: true } : surveyClosed_(session);
+  }
   const empId = normalizeId(d.empId);
   if (!empId) return { ok: false, error: 'invalid', message: '請填寫人事號' };
   const answers = Array.isArray(d.answers) ? d.answers.map(Number) : [];

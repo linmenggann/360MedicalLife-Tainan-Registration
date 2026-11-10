@@ -34,8 +34,9 @@ const CONFIG = {
   DIRECT_FAILS_BEFORE_PROXY: 2   // 直接上傳連續失敗幾次（後端仍連得上）後，改由後端代傳分塊
 };
 
+// closed：停止受理填寫（活動已結束；2026-11-10 起第一梯次）。後端 Code.gs 的 SURVEY_CLOSED 也要一併設定
 const SESSIONS = {
-  "第一梯次": { date: "115/10/17（六）–10/18（日）", page: "survey-1.html" },
+  "第一梯次": { date: "115/10/17（六）–10/18（日）", page: "survey-1.html", closed: true },
   "第二梯次": { date: "115/11/14（六）–11/15（日）", page: "survey-2.html" },
   "第三梯次": { date: "115/11/21（六）–11/22（日）", page: "survey-3.html" }
 };
@@ -1041,9 +1042,36 @@ function closeDone() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+/* ---------- 停止受理填寫 ---------- */
+function renderClosed() {
+  document.title = `${SESSION}活動滿意度調查（已停止受理）｜360°醫學人生｜走進臺南，走進生活`;
+  clearDraft();
+  $("#app").innerHTML = `
+  <section class="hero">
+    <div class="container">
+      <span class="kicker">SURVEY</span>
+      <h1>活動滿意度調查</h1>
+      <p class="sub">360°醫學人生｜走進臺南，走進生活</p>
+      <div class="session-chip"><b>${esc(SESSION)}</b><span>${esc(SESS.date)}</span></div>
+    </div>
+  </section>
+  <div class="container">
+    <section class="card closed-card" id="closedNotice" role="status">
+      <div class="seal">截止</div>
+      <h2>${esc(SESSION)}活動滿意度調查已停止受理填寫</h2>
+      <p>${esc(SESSION)}活動已圓滿結束，感謝大家的參與與回饋！</p>
+      <p>如有問題，請洽教學部林盟淦<span class="nowrap">（分機 57440）</span>。</p>
+      <p><a class="btn btn-outline" href="index.html">回活動網頁</a></p>
+    </section>
+  </div>`;
+  const bar = $("#progressBar");
+  if (bar) bar.style.width = "0%";
+}
+
 /* ---------- 啟動 ---------- */
 function init() {
   if (!SESS) { document.getElementById("app").textContent = "頁面設定錯誤：找不到梯次。"; return; }
+  if (SESS.closed) { renderClosed(); return; }
   render();
   // 先載入查詢名單（使用者輸完人事號時通常已經載好）；並喚醒 Apps Script（送出時會用到）
   loadRoster().then(() => {
