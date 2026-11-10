@@ -259,8 +259,8 @@ const IDENTITIES = [
 // 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；統一 40 人，包含長官及工作人員）。
 // 載入後以後端或公開統計回傳的值為準
 const SESSION_CAPS = { "第一梯次": 40, "第二梯次": 40, "第三梯次": 40 };
-// 停止受理報名的梯次（2026-10-15 起第一梯次）。載入後以後端或公開統計回傳的值為準
-let CLOSED_SESSIONS = ["第一梯次"];
+// 停止受理報名的梯次（2026-10-15 起第一梯次、2026-11-10 起第二梯次）。載入後以後端或公開統計回傳的值為準
+let CLOSED_SESSIONS = ["第一梯次", "第二梯次"];
 function mergeClosedSessions(list){ if (Array.isArray(list)) CLOSED_SESSIONS = Array.from(new Set(CLOSED_SESSIONS.concat(list))); }
 // 舊身分名稱 → 新名稱（2026-10-05「西醫UGY」改為「西醫UGY/醫事職類UGY」）。
 // 既有報名資料、公開統計、本機快取與尚未重新部署的後端仍可能使用舊名稱，讀取時一律換成新名稱。

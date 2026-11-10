@@ -602,7 +602,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
       <p class="tagline">臺南，<em>一座讓人更懂生活的城市</em>。走讀府城街巷、市場、廟宇與聚落，從飲食、信仰、文化與土地認識民眾的生活樣貌，從臺南的日常，拓展照顧的視野。</p>
       <div class="sessions" aria-label="活動梯次">
         <div class="chip chip-1"><small>第一梯次・已截止報名</small><span>10/17（六）–10/18（日）</span></div>
-        <div class="chip chip-2"><small>第二梯次</small><span>11/14（六）–11/15（日）</span></div>
+        <div class="chip chip-2"><small>第二梯次・已截止報名</small><span>11/14（六）–11/15（日）</span></div>
         <div class="chip chip-3"><small>第三梯次</small><span>11/21（六）–11/22（日）</span></div>
         <div class="chip chip-days"><span>民國 115 年｜每梯次 2 日</span></div>
       </div>
@@ -1023,7 +1023,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
         <div>
           <h4>活動日期（三梯次擇一）</h4>
           <p>第一梯次｜115/10/17（六）–10/18（日）（已截止報名）</p>
-          <p>第二梯次｜115/11/14（六）–11/15（日）</p>
+          <p>第二梯次｜115/11/14（六）–11/15（日）（已截止報名）</p>
           <p>第三梯次｜115/11/21（六）–11/22（日）</p>
           <p class="muted">2日活動需全程參與</p>
         </div>
@@ -1407,8 +1407,8 @@ const IDENTITIES = [
 // 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；統一 40 人，包含長官及工作人員）。
 // 網頁不顯示上限與剩餘人數；載入名額後以後端回傳的 sessionCaps（或公開統計的「梯次上限」）為準
 let SESSION_CAPS = { "第一梯次": 40, "第二梯次": 40, "第三梯次": 40 };
-// 停止受理報名的梯次（2026-10-15 起第一梯次）。載入名額後以後端回傳的 closedSessions（或公開統計的「梯次狀態」）為準
-let CLOSED_SESSIONS = ["第一梯次"];
+// 停止受理報名的梯次（2026-10-15 起第一梯次、2026-11-10 起第二梯次）。載入名額後以後端回傳的 closedSessions（或公開統計的「梯次狀態」）為準
+let CLOSED_SESSIONS = ["第一梯次", "第二梯次"];
 function mergeClosedSessions(list){ if (Array.isArray(list)) CLOSED_SESSIONS = Array.from(new Set(CLOSED_SESSIONS.concat(list))); }
 const sessionClosed = s => CLOSED_SESSIONS.includes(s);
 // 長官及工作人員：不在身分選單，但計入各梯次總人數（後端與公開統計的人數裡有這一項）
