@@ -512,6 +512,10 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .form-actions .btn{padding:.85rem 2rem;font-size:1.05rem}
 .form-msg{grid-column:1/-1;display:none;padding:.8rem 1rem;border-radius:12px;font-size:.92rem}
 .form-msg.error{display:block;background:#fdecea;color:#8f2416;border:1px solid #f1b8ae}
+.closed-banner{max-width:760px;margin:0 auto 1.2rem;padding:1rem 1.2rem;border-radius:14px;background:#ecebe8;border:1px solid #d5d1c8;color:var(--ink);text-align:center}
+.closed-banner b{display:block;font-family:var(--serif);font-size:1.15rem;color:var(--brick-deep)}
+.closed-banner span{display:block;margin-top:.2rem;font-size:.93rem;color:var(--ink-soft)}
+.closed-banner[hidden]{display:none}
 @media (max-width:640px){
   .form-card{padding:1.6rem 1.2rem}
   .form-grid{grid-template-columns:1fr}
@@ -603,7 +607,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
       <div class="sessions" aria-label="活動梯次">
         <div class="chip chip-1"><small>第一梯次・已截止報名</small><span>10/17（六）–10/18（日）</span></div>
         <div class="chip chip-2"><small>第二梯次・已截止報名</small><span>11/14（六）–11/15（日）</span></div>
-        <div class="chip chip-3"><small>第三梯次</small><span>11/21（六）–11/22（日）</span></div>
+        <div class="chip chip-3"><small>第三梯次・已截止報名</small><span>11/21（六）–11/22（日）</span></div>
         <div class="chip chip-days"><span>民國 115 年｜每梯次 2 日</span></div>
       </div>
       <p class="audience">參加對象｜<b>西醫UGY/醫事職類UGY</b>、<b>西醫PGY</b>、<b>醫事職類PGY</b> 及 <b>臨床教師</b></p>
@@ -1024,7 +1028,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
           <h4>活動日期（三梯次擇一）</h4>
           <p>第一梯次｜115/10/17（六）–10/18（日）（已截止報名）</p>
           <p>第二梯次｜115/11/14（六）–11/15（日）（已截止報名）</p>
-          <p>第三梯次｜115/11/21（六）–11/22（日）</p>
+          <p>第三梯次｜115/11/21（六）–11/22（日）（已截止報名）</p>
           <p class="muted">2日活動需全程參與</p>
         </div>
       </div>
@@ -1231,6 +1235,10 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
       <h2>線上報名</h2>
       <p>請填寫以下資料，<span style="color:var(--vermilion)">＊</span>為必填。報名成功後，將以 E-mail 通知行前資訊。</p>
     </div>
+    <div class="closed-banner" id="allClosed" role="status" hidden>
+      <b>三梯次報名皆已截止</b>
+      <span>感謝您的支持！如有問題，請洽教學部林盟淦（分機 57440）。</span>
+    </div>
 
     <form class="form-card" id="regForm" novalidate>
       <div class="form-grid">
@@ -1407,8 +1415,8 @@ const IDENTITIES = [
 // 各梯次總報名人數上限（2026-10-08 起取消各身分限額，只保留各梯次總人數上限；統一 40 人，包含長官及工作人員）。
 // 網頁不顯示上限與剩餘人數；載入名額後以後端回傳的 sessionCaps（或公開統計的「梯次上限」）為準
 let SESSION_CAPS = { "第一梯次": 40, "第二梯次": 40, "第三梯次": 40 };
-// 停止受理報名的梯次（2026-10-15 起第一梯次、2026-11-10 起第二梯次）。載入名額後以後端回傳的 closedSessions（或公開統計的「梯次狀態」）為準
-let CLOSED_SESSIONS = ["第一梯次", "第二梯次"];
+// 停止受理報名的梯次（2026-10-15 起第一梯次、2026-11-10 起第二梯次、2026-11-14 起第三梯次）。載入名額後以後端回傳的 closedSessions（或公開統計的「梯次狀態」）為準
+let CLOSED_SESSIONS = ["第一梯次", "第二梯次", "第三梯次"];
 function mergeClosedSessions(list){ if (Array.isArray(list)) CLOSED_SESSIONS = Array.from(new Set(CLOSED_SESSIONS.concat(list))); }
 const sessionClosed = s => CLOSED_SESSIONS.includes(s);
 // 長官及工作人員：不在身分選單，但計入各梯次總人數（後端與公開統計的人數裡有這一項）
@@ -1693,6 +1701,12 @@ function renderQuota(){
     o.textContent = `${s.key}｜${s.date}${c ? "（已截止報名）" : f ? "（已額滿）" : ""}`;
     o.disabled = c || f;
   });
+  // 所有梯次都停止受理時：報名表上方顯示公告，送出鈕停用
+  const allClosed = SESSIONS.every(x => sessionClosed(x.key));
+  document.getElementById("allClosed").hidden = !allClosed;
+  if (allClosed) document.getElementById("submitBtn").disabled = true;
+  const stamp = document.querySelector(".stamp");
+  if (stamp) stamp.innerHTML = allClosed ? "報名<br>已截止" : "報名<br>開放中";
 
   const pulse = document.getElementById("livePulse");
   const text = document.getElementById("liveText");
